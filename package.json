@@ -1,0 +1,19 @@
+{
+  "name": "xvc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260329.1",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.2",
+    "wrangler": "^4.78.0"
+  }
+}
