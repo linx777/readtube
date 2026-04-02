@@ -9,10 +9,31 @@ describe('renderMarkdownBlock', () => {
     expect(renderMarkdownBlock('## [00:12-03:45] 技术革命：八十年一遇的AI巅峰')).toBe(
       '<h2 class="section-heading"><span class="section-rail"><span class="timestamp rail">00:12-03:45</span></span><span class="section-title">技术革命：八十年一遇的AI巅峰</span></h2>',
     );
+    expect(renderMarkdownBlock('## 技术革命：八十年一遇的AI巅峰 [00:12-03:45]')).toBe(
+      '<h2 class="section-heading"><span class="section-rail"><span class="timestamp rail">00:12-03:45</span></span><span class="section-title">技术革命：八十年一遇的AI巅峰</span></h2>',
+    );
     expect(renderMarkdownBlock('> 关键观点')).toBe('<blockquote><p>关键观点</p></blockquote>');
     expect(renderMarkdownBlock('- 第一条\n- 第二条')).toBe('<ul><li>第一条</li><li>第二条</li></ul>');
     expect(renderMarkdownBlock('[00:32] Jen: 这是一个问题')).toBe(
       '<div class="qa"><div class="qa-time"><span class="timestamp rail compact">00:32</span></div><div class="qa-speaker">Jen</div><div class="qa-body">这是一个问题</div></div>',
+    );
+    expect(renderMarkdownBlock('欧文·詹宁斯（Owen Jennings）: 这是一个回答')).toBe(
+      '<div class="qa no-time"><div class="qa-speaker">欧文·詹宁斯（Owen Jennings）</div><div class="qa-body">这是一个回答</div></div>',
+    );
+    expect(renderMarkdownBlock('**主持人**：这是一个问题')).toBe(
+      '<div class="qa no-time"><div class="qa-speaker">主持人</div><div class="qa-body">这是一个问题</div></div>',
+    );
+    expect(renderMarkdownBlock('**主持人**\n这是一个问题')).toBe(
+      '<div class="qa no-time"><div class="qa-speaker">主持人</div><div class="qa-body">这是一个问题</div></div>',
+    );
+    expect(renderMarkdownBlock('Jen: 这是一个问题')).toBe(
+      '<div class="qa no-time"><div class="qa-speaker">Jen</div><div class="qa-body">这是一个问题</div></div>',
+    );
+  });
+
+  it('renders heading plus following paragraph within the same block', () => {
+    expect(renderMarkdownBlock('## 丑闻曝光与官方回应 [00:07-00:40]\n前国土安全部部长对此表示震惊。')).toBe(
+      '<h2 class="section-heading"><span class="section-rail"><span class="timestamp rail">00:07-00:40</span></span><span class="section-title">丑闻曝光与官方回应</span></h2><p>前国土安全部部长对此表示震惊。</p>',
     );
   });
 

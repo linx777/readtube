@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTranscriptChunks, buildTranscriptPreview, extractVideoId, formatTime } from '../src/services/youtube';
+import {
+  buildTranscriptChunks,
+  buildTranscriptPreview,
+  buildTranscriptTextFromChunks,
+  extractVideoId,
+  formatTime,
+} from '../src/services/youtube';
 
 describe('extractVideoId', () => {
   it('parses watch and short urls', () => {
@@ -58,5 +64,16 @@ describe('buildTranscriptPreview', () => {
         text: `${'a'.repeat(20)}...`,
       },
     ]);
+  });
+});
+
+describe('buildTranscriptTextFromChunks', () => {
+  it('joins transcript content without timestamps', () => {
+    expect(
+      buildTranscriptTextFromChunks([
+        { start: 5, end: 13, text: 'hello there' },
+        { start: 20, end: 24, text: 'general kenobi' },
+      ]),
+    ).toBe('hello there\ngeneral kenobi');
   });
 });

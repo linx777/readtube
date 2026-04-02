@@ -1,10 +1,7 @@
-import { handleGenerateRoute, handleMockGenerateRoute } from './routes/generate';
+import { handleGenerateRoute } from './routes/generate';
 import { renderAppPage } from './ui/page';
 
-export interface Env {
-  GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;
-}
+export interface Env {}
 
 function htmlResponse(html: string): Response {
   return new Response(html, {
@@ -37,10 +34,6 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/generate') {
       return handleGenerateRoute(request, env, ctx);
-    }
-
-    if (request.method === 'POST' && url.pathname === '/api/mock-generate') {
-      return handleMockGenerateRoute(request, env, ctx);
     }
 
     if ((request.method === 'GET' || isHead) && url.pathname === '/health') {

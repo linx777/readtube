@@ -1,6 +1,6 @@
 const encoder = new TextEncoder();
 
-export type SseEventName = 'meta' | 'html' | 'cache' | 'error' | 'done';
+export type SseEventName = 'meta' | 'html' | 'cache' | 'insights' | 'error' | 'done';
 
 export function createSseResponse(): {
   response: Response;

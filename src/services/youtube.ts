@@ -463,9 +463,7 @@ function formatSourceAuthor(details?: YoutubeVideoDetails): string {
 }
 
 export function buildTranscriptTextFromChunks(chunks: TranscriptChunk[]): string {
-  return chunks
-    .map((chunk) => `[${formatTime(chunk.start)}-${formatTime(chunk.end)}] ${chunk.text}`)
-    .join('\n');
+  return chunks.map((chunk) => chunk.text).join('\n');
 }
 
 export function formatTime(seconds: number): string {
@@ -546,7 +544,7 @@ export async function fetchTranscriptBundle(input: string, callbacks?: Transcrip
   const chunks = buildTranscriptChunks(segments);
 
   if (!chunks.length) {
-    throw new AppError('empty_transcript_after_cleanup', '字幕内容过于稀薄，无法整理成文章。', 422);
+    throw new AppError('empty_transcript_after_cleanup', '字幕内容过于稀薄，无法整理成 transcript。', 422);
   }
 
   return {

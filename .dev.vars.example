@@ -1,2 +1,1 @@
-GEMINI_API_KEY=your_google_ai_studio_key
-GEMINI_MODEL=gemini-2.5-flash-lite
+# No environment variables are required for local development.

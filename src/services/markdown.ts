@@ -20,8 +20,17 @@ function renderTimestamp(timestamp: string, compact = false): string {
   return `<span class="${className}">${escapeHtml(timestamp)}</span>`;
 }
 
+function renderSectionHeading(timestamp: string, title: string): string {
+  return `<h2 class="section-heading"><span class="section-rail">${renderTimestamp(timestamp)}</span><span class="section-title">${renderInlineMarkdown(title)}</span></h2>`;
+}
+
+const SPEAKER_LINE_PATTERN =
+  /^(?:\[([0-9:]+(?:-[0-9:]+)?)\]\s*)?(?:\*\*)?([A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5·&.'()（）\s-]{0,47})(?:\*\*)?[：:]\s*(.+)$/s;
+const SPEAKER_HEADING_PATTERN =
+  /^(?:\[([0-9:]+(?:-[0-9:]+)?)\]\s*)?\*\*([A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5·&.'()（）\s-]{0,47})\*\*$/;
+
 function renderSpeakerParagraph(content: string): string | null {
-  const match = content.match(/^(?:\[([0-9:]+(?:-[0-9:]+)?)\]\s*)?([A-Za-z\u4e00-\u9fa5]{1,16})[：:]\s*(.+)$/s);
+  const match = content.match(SPEAKER_LINE_PATTERN);
   if (!match) {
     return null;
   }
@@ -29,7 +38,35 @@ function renderSpeakerParagraph(content: string): string | null {
   const timestamp = match[1];
   const speaker = match[2];
   const body = match[3];
-  return `<div class="qa"><div class="qa-time">${timestamp ? renderTimestamp(timestamp, true) : '<span class="timestamp rail compact ghost">--:--</span>'}</div><div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
+  const timeCell = timestamp
+    ? `<div class="qa-time">${renderTimestamp(timestamp, true)}</div>`
+    : '';
+  const className = timestamp ? 'qa' : 'qa no-time';
+  return `<div class="${className}">${timeCell}<div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
+}
+
+function renderSpeakerBlock(lines: string[]): string | null {
+  if (!lines.length) {
+    return null;
+  }
+
+  const headingMatch = lines[0].match(SPEAKER_HEADING_PATTERN);
+  if (!headingMatch || lines.length < 2) {
+    return null;
+  }
+
+  const timestamp = headingMatch[1];
+  const speaker = headingMatch[2];
+  const body = lines.slice(1).join(' ').trim();
+  if (!body) {
+    return null;
+  }
+
+  const timeCell = timestamp
+    ? `<div class="qa-time">${renderTimestamp(timestamp, true)}</div>`
+    : '';
+  const className = timestamp ? 'qa' : 'qa no-time';
+  return `<div class="${className}">${timeCell}<div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
 }
 
 function renderParagraph(lines: string[]): string {
@@ -64,9 +101,14 @@ function renderHeading(line: string): string | null {
 
   if (line.startsWith('## ')) {
     const content = line.slice(3).trim();
-    const match = content.match(/^\[([0-9:]+(?:-[0-9:]+)?)\]\s*(.+)$/);
-    if (match) {
-      return `<h2 class="section-heading"><span class="section-rail">${renderTimestamp(match[1])}</span><span class="section-title">${renderInlineMarkdown(match[2])}</span></h2>`;
+    const leadingTimestampMatch = content.match(/^\[([0-9:]+(?:-[0-9:]+)?)\]\s*(.+)$/);
+    if (leadingTimestampMatch) {
+      return renderSectionHeading(leadingTimestampMatch[1], leadingTimestampMatch[2]);
+    }
+
+    const trailingTimestampMatch = content.match(/^(.+?)\s*\[([0-9:]+(?:-[0-9:]+)?)\]$/);
+    if (trailingTimestampMatch) {
+      return renderSectionHeading(trailingTimestampMatch[2], trailingTimestampMatch[1]);
     }
 
     return `<h2>${renderInlineMarkdown(content)}</h2>`;
@@ -86,8 +128,28 @@ export function renderMarkdownBlock(block: string): string {
   }
 
   const heading = renderHeading(lines[0]);
-  if (heading && lines.length === 1) {
-    return heading;
+  if (heading) {
+    if (lines.length === 1) {
+      return heading;
+    }
+
+    const rest = lines.slice(1);
+    let trailingBlock = '';
+
+    if (rest.every((line) => line.startsWith('>'))) {
+      trailingBlock = renderBlockquote(rest);
+    } else if (rest.every((line) => /^-\s+/.test(line))) {
+      trailingBlock = renderList(rest);
+    } else {
+      trailingBlock = renderParagraph(rest);
+    }
+
+    return `${heading}${trailingBlock}`;
+  }
+
+  const speakerBlock = renderSpeakerBlock(lines);
+  if (speakerBlock) {
+    return speakerBlock;
   }
 
   if (lines.every((line) => line.startsWith('>'))) {

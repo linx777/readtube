@@ -1,5 +1,21 @@
-node_modules
-.wrangler
-dist
+node_modules/
+.wrangler/
+dist/
+coverage/
+
+# Local secrets
 .dev.vars
-coverage
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
