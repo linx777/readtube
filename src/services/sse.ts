@@ -1,6 +1,8 @@
+import { createAbortError } from './abort';
+
 const encoder = new TextEncoder();
 
-export type SseEventName = 'meta' | 'html' | 'cache' | 'insights' | 'error' | 'done';
+export type SseEventName = 'meta' | 'html' | 'cache' | 'insights' | 'warning' | 'error' | 'done';
 
 export function createSseResponse(): {
   response: Response;
@@ -27,5 +29,7 @@ export async function sendSseEvent(
   payload: unknown,
 ): Promise<void> {
   const body = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
-  await writer.write(encoder.encode(body));
+  await writer.write(encoder.encode(body)).catch((error: unknown) => {
+    throw createAbortError(error);
+  });
 }

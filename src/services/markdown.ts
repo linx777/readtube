@@ -28,6 +28,18 @@ const SPEAKER_LINE_PATTERN =
   /^(?:\[([0-9:]+(?:-[0-9:]+)?)\]\s*)?(?:\*\*)?([A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5·&.'()（）\s-]{0,47})(?:\*\*)?[：:]\s*(.+)$/s;
 const SPEAKER_HEADING_PATTERN =
   /^(?:\[([0-9:]+(?:-[0-9:]+)?)\]\s*)?\*\*([A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5·&.'()（）\s-]{0,47})\*\*$/;
+const TIMESTAMP_LINE_PATTERN = /^\[([0-9:]+(?:-[0-9:]+)?)\]\s+(.+)$/s;
+
+function renderTimestampParagraph(content: string): string | null {
+  const match = content.match(TIMESTAMP_LINE_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  const timestamp = match[1];
+  const body = match[2];
+  return `<div class="qa"><div class="qa-meta"><div class="qa-time">${renderTimestamp(timestamp, true)}</div></div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
+}
 
 function renderSpeakerParagraph(content: string): string | null {
   const match = content.match(SPEAKER_LINE_PATTERN);
@@ -38,11 +50,11 @@ function renderSpeakerParagraph(content: string): string | null {
   const timestamp = match[1];
   const speaker = match[2];
   const body = match[3];
-  const timeCell = timestamp
-    ? `<div class="qa-time">${renderTimestamp(timestamp, true)}</div>`
-    : '';
+  const meta = timestamp
+    ? `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
+    : `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div></div>`;
   const className = timestamp ? 'qa' : 'qa no-time';
-  return `<div class="${className}">${timeCell}<div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
+  return `<div class="${className}">${meta}<div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
 }
 
 function renderSpeakerBlock(lines: string[]): string | null {
@@ -62,11 +74,11 @@ function renderSpeakerBlock(lines: string[]): string | null {
     return null;
   }
 
-  const timeCell = timestamp
-    ? `<div class="qa-time">${renderTimestamp(timestamp, true)}</div>`
-    : '';
+  const meta = timestamp
+    ? `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
+    : `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div></div>`;
   const className = timestamp ? 'qa' : 'qa no-time';
-  return `<div class="${className}">${timeCell}<div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
+  return `<div class="${className}">${meta}<div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
 }
 
 function renderParagraph(lines: string[]): string {
@@ -74,6 +86,11 @@ function renderParagraph(lines: string[]): string {
   const speaker = renderSpeakerParagraph(content);
   if (speaker) {
     return speaker;
+  }
+
+  const timestampOnly = renderTimestampParagraph(content);
+  if (timestampOnly) {
+    return timestampOnly;
   }
 
   return `<p>${renderInlineMarkdown(content)}</p>`;

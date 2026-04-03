@@ -1,7 +1,12 @@
 import { handleGenerateRoute } from './routes/generate';
 import { renderAppPage } from './ui/page';
 
-export interface Env {}
+export interface Env {
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  GEMINI_INSIGHTS_MODEL?: string;
+  GEMINI_DIALOGUE_MODEL?: string;
+}
 
 function htmlResponse(html: string): Response {
   return new Response(html, {

@@ -1,4 +1,9 @@
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
+const READING_MODE_OPTIONS = [
+  { value: 'quick', label: '速读版' },
+  { value: 'full', label: '详细版' },
+] as const;
+const DEFAULT_READING_MODE = READING_MODE_OPTIONS[0]?.value ?? 'quick';
 const BRAND_ICON_BASE64 = [
   'iVBORw0KGgoAAAANSUhEUgAAAVgAAAEQCAYAAAD1Z2xBAAAKsWlDQ1BJQ0MgUHJvZmlsZQAASImVlwk4lHsXwP/v+86+2AYhy9i3yBIGWcbYxp6dNmNmMJYxDaOSNkmFm5IklEvdkKLbgtwWadF2hUp7l6RS3a4WqVS+F4/Rvd/zfd/znef5z/k9Z87//M85z/t/n/MCQFXniETJsBwAKcJ0cbCXGz0yKpqOfwkQQAaywBbocLhpImZQkB9AZVr/XT72AmhC3zSbiPXv//9Xkefx07gAQEEox/LSuCkoH0fXR65InA4Acgi16y5PF01wF8qKYjRBlJ9OcPwUf5rg2EnGUCZ9QoNZKNMBIFA4HHE8AJQ5qJ2ewY1H41AmarAQ8gRClLNQdk5JSeWhfAplI9RHhPJEfEbsD3Hi/xYzVhqTw4mX8lQtk0JwF6SJkjkr/892/G9JSZZMn2GILkqC2DsY1Qpoz54mpfpKWRgbEDjNAt6k/yQn',
   'SLzDppmbxoqe5rTkEPY08zjuvtI4yQF+0xwn8JT6CNLZodPMT/MImWZxarD03DgxiznNHPFMDpKkMKk9gc+Wxs9MCI2Y5gxBeIA0t6QQ3xkfltQulgRLa+ELvdxmzvWU9iEl7YfaBWzp3vSEUG9pHzgz+fOFzJmYaZHS3Hh8d48ZnzCpvyjdTXqWKDlI6s9P9pLa0zJCpHvT0YdzZm+QtIeJHJ+gaQYsYA2sQDgIA3QQBIIB2tF0/or0iUJYqaKVYkF8Qjqdid42Pp0t5JrPoVtZWNkCMHF3px6N968m7yQkv2TGtu0sAG6pqHHzjM1lAwCNqJbVmrEZFAMgsx2A9o1ciThjyoaZ+MECEvpOUASqQBPoAiNghuZoCxyBK/AAPmiOoSAKLAFckABSgBgsB1lgPcgF+WAb2AnKQCXYB2rBYXAUNINT4By4BK6BLnAbPAB9YBC8AsPgIxiDIAgPUSEapAppQfqQKWQFMSBnyAPyg4KhKCgG',
@@ -281,6 +286,17 @@ function renderShowcaseArticle(): string {
   return ``;
 }
 
+function renderReadingModeToggle(): string {
+  return [
+    `<div class="hero-tools" data-mode-toggle data-mode="${DEFAULT_READING_MODE}" data-search-animate style="--search-delay: 270ms; --mode-count: ${READING_MODE_OPTIONS.length}; --mode-index: 0;">`,
+    '<span class="mode-slider" aria-hidden="true"></span>',
+    ...READING_MODE_OPTIONS.map((option, index) => (
+      `<button type="button" class="mode-pill${index === 0 ? ' active' : ''}" data-mode-submit="${option.value}">${option.label}</button>`
+    )),
+    '</div>',
+  ].join('');
+}
+
 function renderStyles(): string {
   return `
     @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap");
@@ -340,6 +356,8 @@ function renderStyles(): string {
     }
 
     .shell {
+      --reader-content-width: 1080px;
+      --reader-frame-gutter: 42px;
       width: 100%;
       min-height: calc(100vh - 28px);
       height: calc(100vh - 28px);
@@ -348,6 +366,14 @@ function renderStyles(): string {
       border-radius: 34px;
       overflow: hidden;
       box-shadow: none;
+    }
+
+    .shell[data-reader-layout="focus"] {
+      --reader-content-width: 920px;
+    }
+
+    .shell[data-reader-layout="wide"] {
+      --reader-content-width: 1240px;
     }
 
     .topbar {
@@ -359,6 +385,150 @@ function renderStyles(): string {
       padding: 0 30px 0 22px;
       border-bottom: 1px solid rgba(122, 111, 96, 0.08);
       background: #F2EFE9;
+    }
+
+    .topbar[data-view="article"] {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .reading-topbar {
+      display: none;
+      --reading-topbar-offset: 24px;
+      position: fixed;
+      left: 50vw;
+      bottom: var(--reading-topbar-offset);
+      width: min(var(--reader-content-width), calc(100vw - 96px));
+      max-width: none;
+      min-width: 0;
+      min-height: 68px;
+      padding: 14px 16px;
+      border-radius: 24px;
+      border: 1px solid var(--reader-tooldeck-border);
+      background: transparent;
+      box-shadow: var(--reader-tooldeck-shadow);
+      backdrop-filter: blur(18px);
+      align-items: center;
+      gap: 18px;
+      grid-template-columns: auto minmax(0, 1fr);
+      z-index: 18;
+      transform: translateX(-50%);
+    }
+
+    .app-body[data-view="article"] .reading-topbar {
+      display: grid;
+    }
+
+    .article-wrap[data-loading-state="initial"] .reading-topbar {
+      width: auto;
+      min-height: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      display: flex;
+      justify-content: center;
+      gap: 0;
+    }
+
+    .article-wrap[data-loading-state="initial"] .reading-progress {
+      display: none;
+    }
+
+    .topbar[data-view="article"] .brand {
+      order: 1;
+      flex: 0 0 auto;
+    }
+
+    .topbar[data-view="article"] .topnav {
+      order: 3;
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+
+    .reading-back {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      padding: 0 15px 0 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(33, 24, 17, 0.1);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+      color: var(--accent-strong);
+      font: 500 15px/1 var(--sans);
+      letter-spacing: -0.01em;
+      text-transform: none;
+      margin-left: 0;
+    }
+
+    .reading-back:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .reading-back-icon {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      display: block;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .reading-progress {
+      --reading-progress: 0;
+      --reading-progress-percent: 0%;
+      position: relative;
+      width: 100%;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(121, 102, 77, 0.42);
+      cursor: grab;
+      touch-action: none;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        inset 0 -1px 0 rgba(83, 67, 47, 0.08),
+        0 0 0 1px rgba(95, 76, 51, 0.12);
+    }
+
+    .reading-progress.dragging {
+      cursor: grabbing;
+    }
+
+    .reading-progress-fill {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(123, 99, 69, 0.92), rgba(193, 171, 138, 0.92));
+      transform-origin: left center;
+      transform: scaleX(var(--reading-progress));
+      transition: transform 160ms ease;
+    }
+
+    .reading-progress-dot {
+      position: absolute;
+      top: 50%;
+      left: var(--reading-progress-percent);
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: #df3b31;
+      cursor: inherit;
+      transform: translate(-50%, -50%);
+      transition: left 160ms ease;
+    }
+
+    .reading-progress.dragging .reading-progress-fill,
+    .reading-progress.dragging .reading-progress-dot {
+      transition: none;
     }
 
     .brand {
@@ -479,7 +649,7 @@ function renderStyles(): string {
     .settings-menu-item {
       width: 100%;
       min-height: 44px;
-      padding: 0 16px;
+      padding: 12px 16px;
       border-radius: 16px;
       background: transparent;
       color: var(--accent-strong);
@@ -488,11 +658,145 @@ function renderStyles(): string {
       text-transform: none;
       text-align: left;
       box-shadow: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
     }
 
     .settings-menu-item:hover:not(:disabled) {
       transform: none;
       background: rgba(31, 29, 26, 0.06);
+    }
+
+    .settings-menu-copy {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .settings-menu-title {
+      font: inherit;
+      color: inherit;
+    }
+
+    .settings-menu-meta {
+      font: 500 12.5px/1.2 var(--sans);
+      letter-spacing: 0.01em;
+      color: rgba(74, 64, 51, 0.7);
+      text-transform: none;
+    }
+
+    .settings-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(29, 24, 18, 0.14);
+      backdrop-filter: blur(10px);
+    }
+
+    .settings-modal[hidden] {
+      display: none;
+    }
+
+    .settings-modal-card {
+      width: min(780px, calc(100vw - 32px));
+      padding: 38px;
+      border-radius: 36px;
+      border: 1px solid rgba(37, 31, 24, 0.08);
+      background: rgba(255, 253, 249, 0.97);
+      box-shadow: 0 24px 60px rgba(33, 27, 20, 0.16);
+      display: grid;
+      gap: 24px;
+    }
+
+    .settings-modal-head {
+      display: grid;
+      gap: 12px;
+    }
+
+    .settings-modal-title {
+      margin: 0;
+      font: 700 34px/1.06 var(--display);
+      letter-spacing: -0.02em;
+      color: var(--accent-strong);
+    }
+
+    .settings-modal-copy {
+      margin: 0;
+      font: 500 18px/1.6 var(--sans);
+      letter-spacing: 0.01em;
+      color: rgba(74, 64, 51, 0.76);
+    }
+
+    .settings-modal-form {
+      display: grid;
+      gap: 18px;
+    }
+
+    .settings-modal-input {
+      width: 100%;
+      min-height: 72px;
+      padding: 0 22px;
+      border-radius: 22px;
+      border: 1px solid rgba(37, 31, 24, 0.12);
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+      color: var(--accent-strong);
+      font: 500 18px/1.2 var(--sans);
+      letter-spacing: 0.01em;
+      outline: none;
+    }
+
+    .settings-modal-input:focus {
+      border-color: rgba(116, 84, 36, 0.3);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.75),
+        0 0 0 4px rgba(183, 145, 91, 0.12);
+    }
+
+    .settings-modal-footnote {
+      font: 500 15px/1.55 var(--sans);
+      letter-spacing: 0.01em;
+      color: rgba(74, 64, 51, 0.68);
+    }
+
+    .settings-modal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .settings-modal-button {
+      min-height: 52px;
+      padding: 0 22px;
+      border-radius: 999px;
+      border: 1px solid rgba(37, 31, 24, 0.1);
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--accent-strong);
+      box-shadow: none;
+      font: 600 16px/1 var(--sans);
+      letter-spacing: 0.01em;
+      text-transform: none;
+    }
+
+    .settings-modal-button:hover:not(:disabled) {
+      transform: none;
+      background: rgba(31, 29, 26, 0.06);
+    }
+
+    .settings-modal-button.primary {
+      border-color: rgba(37, 31, 24, 0.12);
+      background: #171717;
+      color: #fff;
+    }
+
+    .settings-modal-button.primary:hover:not(:disabled) {
+      background: #0f0f0f;
     }
 
     .app-body {
@@ -805,13 +1109,80 @@ function renderStyles(): string {
     }
 
     .article-wrap {
+      --reader-surface: linear-gradient(180deg, rgba(252, 249, 243, 0.78), rgba(252, 249, 243, 0.96));
+      --reader-tooldeck-surface: rgba(255, 253, 249, 0.94);
+      --reader-tooldeck-border: rgba(33, 24, 17, 0.08);
+      --reader-tooldeck-shadow: 0 20px 46px rgba(39, 28, 17, 0.12);
+      --reader-tooldeck-icon: #2a2622;
+      --reader-tooldeck-muted: #72695e;
+      --reader-copy-scale: 1;
+      --reader-loading-surface: linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(248, 242, 233, 0.92));
+      --reader-loading-line: linear-gradient(90deg, rgba(141, 125, 106, 0.12), rgba(141, 125, 106, 0.24), rgba(141, 125, 106, 0.12));
+      --reader-copy-color: var(--text);
+      --reader-heading-color: #1d140e;
+      --reader-title-color: #27231f;
+      --reader-muted-color: var(--muted);
+      --reader-soft-surface: rgba(22, 22, 22, 0.06);
+      --reader-quote-line: rgba(36, 31, 25, 0.12);
+      --reader-card-surface: rgba(255, 255, 255, 0.88);
+      --reader-card-text: #2a2622;
+      --reader-card-shadow: 0 18px 40px rgba(38, 28, 20, 0.14);
       min-width: 0;
       min-height: 0;
+      position: relative;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 34px 42px 72px;
-      background: linear-gradient(180deg, rgba(252, 249, 243, 0.78), rgba(252, 249, 243, 0.96));
+      padding: 34px var(--reader-frame-gutter) 132px;
+      background: var(--reader-surface);
       display: none;
+    }
+
+    .article-wrap[data-reader-theme="sepia"] {
+      --reader-surface: linear-gradient(180deg, rgba(247, 239, 225, 0.92), rgba(242, 231, 214, 0.98));
+      --reader-tooldeck-surface: rgba(250, 243, 232, 0.94);
+      --reader-tooldeck-border: rgba(95, 73, 47, 0.12);
+      --reader-tooldeck-shadow: 0 20px 46px rgba(71, 50, 27, 0.14);
+      --reader-tooldeck-icon: #3a2d1f;
+      --reader-tooldeck-muted: #7d6244;
+      --reader-loading-surface: linear-gradient(180deg, rgba(251, 244, 232, 0.98), rgba(244, 234, 219, 0.95));
+      --reader-loading-line: linear-gradient(90deg, rgba(155, 121, 77, 0.14), rgba(172, 135, 88, 0.28), rgba(155, 121, 77, 0.14));
+      --reader-copy-color: #2d2418;
+      --reader-heading-color: #261c12;
+      --reader-title-color: #2a1f14;
+      --reader-muted-color: #7b6750;
+      --reader-soft-surface: rgba(76, 53, 30, 0.08);
+      --reader-quote-line: rgba(89, 63, 36, 0.16);
+      --reader-card-surface: rgba(252, 246, 236, 0.9);
+      --reader-card-text: #2d2418;
+      --reader-card-shadow: 0 18px 40px rgba(77, 55, 30, 0.14);
+    }
+
+    .article-wrap[data-reader-theme="mist"] {
+      --reader-surface: linear-gradient(180deg, rgba(244, 245, 248, 0.94), rgba(237, 239, 244, 0.98));
+      --reader-tooldeck-surface: rgba(250, 251, 255, 0.94);
+      --reader-tooldeck-border: rgba(71, 81, 101, 0.1);
+      --reader-tooldeck-shadow: 0 20px 46px rgba(61, 72, 91, 0.12);
+      --reader-tooldeck-icon: #2e3644;
+      --reader-tooldeck-muted: #697488;
+      --reader-loading-surface: linear-gradient(180deg, rgba(248, 249, 252, 0.98), rgba(239, 241, 246, 0.95));
+      --reader-loading-line: linear-gradient(90deg, rgba(126, 137, 158, 0.14), rgba(148, 159, 182, 0.26), rgba(126, 137, 158, 0.14));
+      --reader-copy-color: #29303d;
+      --reader-heading-color: #222936;
+      --reader-title-color: #1e2530;
+      --reader-muted-color: #667183;
+      --reader-soft-surface: rgba(69, 80, 99, 0.08);
+      --reader-quote-line: rgba(80, 92, 112, 0.14);
+      --reader-card-surface: rgba(252, 253, 255, 0.9);
+      --reader-card-text: #29303d;
+      --reader-card-shadow: 0 18px 40px rgba(68, 80, 99, 0.12);
+    }
+
+    .article-wrap[data-reader-type="large"] {
+      --reader-copy-scale: 1.08;
+    }
+
+    .article-wrap[data-reader-type="xlarge"] {
+      --reader-copy-scale: 1.16;
     }
 
     .app-body[data-view="article"] .landing-panel {
@@ -819,10 +1190,7 @@ function renderStyles(): string {
     }
 
     .app-body[data-view="article"] .article-wrap {
-      display: grid;
-      grid-template-columns: 120px minmax(0, 1fr);
-      column-gap: 20px;
-      align-items: start;
+      display: block;
     }
 
     .sidebar-stack,
@@ -1133,17 +1501,14 @@ function renderStyles(): string {
       top: 6px;
       bottom: 6px;
       left: 6px;
-      width: calc(50% - 4px);
+      width: calc((100% / var(--mode-count, 2)) - 4px);
       border-radius: 28px;
       background: #2d3436;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transform: translateX(calc(100% * var(--mode-index, 0)));
       transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
       z-index: 0;
       pointer-events: none;
-    }
-
-    .hero-tools[data-mode="full"] .mode-slider {
-      transform: translateX(100%);
     }
 
     .mode-pill {
@@ -1344,22 +1709,291 @@ function renderStyles(): string {
     }
 
     .reader-shell {
-      max-width: 900px;
+      max-width: var(--reader-content-width);
       margin: 0 auto;
       background: transparent;
       border: 0;
       box-shadow: none;
       min-height: 0;
       padding: 0;
+      position: relative;
+    }
+
+    .reader-shell[data-state="loading"] {
+      min-height: max(360px, calc(100vh - 280px));
+    }
+
+    .reader-tooldeck {
+      position: fixed;
+      top: 50%;
+      right: 30px;
+      z-index: 16;
+      display: none;
+      transform: translateY(-50%);
+    }
+
+    .app-body[data-view="article"] .reader-tooldeck {
+      display: block;
+    }
+
+    .reader-tooldeck-card {
+      display: grid;
+      gap: 2px;
+      padding: 8px;
+      border-radius: 18px;
+      border: 1px solid var(--reader-tooldeck-border);
+      background: var(--reader-tooldeck-surface);
+      box-shadow: var(--reader-tooldeck-shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .reader-tool-button {
+      min-width: 72px;
+      min-height: 70px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 0;
+      background: transparent;
+      color: var(--reader-tooldeck-icon);
+      box-shadow: none;
+      display: grid;
+      place-items: center;
+      gap: 6px;
+      text-align: center;
+      transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .reader-tool-button:hover:not(:disabled) {
+      transform: none;
+      background: rgba(33, 24, 17, 0.05);
+    }
+
+    .reader-tool-button[aria-disabled="true"] {
+      cursor: default;
+    }
+
+    .reader-tool-button[aria-disabled="true"]:hover {
+      background: transparent;
+    }
+
+    .reader-tool-glyph {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      min-height: 24px;
+      color: inherit;
+      line-height: 1;
+    }
+
+    .reader-tool-glyph.text {
+      font: 500 34px/0.9 var(--sans);
+      letter-spacing: -0.06em;
+    }
+
+    .reader-tool-glyph svg {
+      width: 23px;
+      height: 23px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.85;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display: block;
+    }
+
+    .reader-tool-label {
+      display: block;
+      color: var(--reader-tooldeck-muted);
+      font: 700 11px/1.2 var(--sans);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .article-loading {
+      width: min(1080px, 100%);
+      margin: 0 auto 26px;
+      padding: 28px 28px 24px;
+      border-radius: 28px;
+      border: 1px solid rgba(33, 24, 17, 0.08);
+      background: var(--reader-loading-surface);
+      box-shadow:
+        0 18px 40px rgba(42, 28, 18, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+      display: grid;
+      gap: 18px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: min(100%, calc(var(--reader-content-width) * 0.72));
+      margin: 0;
+      padding: 48px 48px 42px;
+      border-radius: 36px;
+      gap: 28px;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-head {
+      gap: 18px;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-pulse {
+      width: 18px;
+      height: 18px;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-title {
+      font-size: 24px;
+      line-height: 1.35;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-body {
+      font-size: 21px;
+      line-height: 1.8;
+      max-width: 44ch;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-lines {
+      gap: 18px;
+    }
+
+    .reader-shell[data-state="loading"] .article-loading-line {
+      height: 18px;
+    }
+
+    .article-loading.hidden {
+      display: none;
+    }
+
+    .reader-shell[data-state="loading"] .empty {
+      display: none;
+    }
+
+    .article-loading::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.58) 48%, transparent 100%);
+      transform: translateX(-100%);
+      animation: loading-sheen 1.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .article-loading-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--sans);
+    }
+
+    .article-loading-pulse {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: #9d6c2f;
+      box-shadow: 0 0 0 rgba(157, 108, 47, 0.42);
+      animation: loading-pulse 1.4s ease-in-out infinite;
+      flex: 0 0 auto;
+    }
+
+    .article-loading-title {
+      margin: 0;
+      color: var(--accent-strong);
+      font: 700 15px/1.4 var(--sans);
+      letter-spacing: 0.01em;
+    }
+
+    .article-loading-body {
+      margin: 0;
+      color: var(--reader-muted-color);
+      font: 400 14px/1.75 var(--sans);
+      max-width: 58ch;
+    }
+
+    .article-loading-lines {
+      display: grid;
+      gap: 12px;
+    }
+
+    .article-loading-line {
+      height: 12px;
+      border-radius: 999px;
+      background: var(--reader-loading-line);
+      background-size: 220% 100%;
+      animation: loading-wave 1.5s linear infinite;
+    }
+
+    .article-loading-line:nth-child(1) { width: 92%; }
+    .article-loading-line:nth-child(2) { width: 84%; }
+    .article-loading-line:nth-child(3) { width: 88%; }
+    .article-loading-line:nth-child(4) { width: 68%; }
+
+    .article .dialogue-loading-block {
+      margin: 24px 0 0;
+      padding: 22px 24px;
+      border-radius: 22px;
+      border: 1px solid rgba(33, 24, 17, 0.08);
+      background: var(--reader-loading-surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .article .dialogue-loading-block::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.5) 48%, transparent 100%);
+      transform: translateX(-100%);
+      animation: loading-sheen 1.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .article .dialogue-loading-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .article .dialogue-loading-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #9d6c2f;
+      box-shadow: 0 0 0 rgba(157, 108, 47, 0.34);
+      animation: loading-pulse 1.4s ease-in-out infinite;
+      flex: 0 0 auto;
+    }
+
+    .article .dialogue-loading-title {
+      margin: 0;
+      color: var(--accent-strong);
+      font: 700 15px/1.5 var(--sans);
+    }
+
+    .article .dialogue-loading-copy {
+      margin: 0;
+      color: var(--reader-muted-color);
+      font: 400 14px/1.75 var(--sans);
+      position: relative;
+      z-index: 1;
     }
 
     .article {
-      width: min(900px, 100%);
+      width: min(var(--reader-content-width), 100%);
       margin: 0 auto;
       font-family: var(--sans);
-      font-size: 18px;
+      font-size: calc(18px * var(--reader-copy-scale));
       line-height: 1.8;
-      color: var(--text);
+      color: var(--reader-copy-color);
     }
 
     .article > * {
@@ -1373,7 +2007,7 @@ function renderStyles(): string {
       margin: 0;
       font-weight: 700;
       letter-spacing: -0.03em;
-      color: #1d140e;
+      color: var(--reader-heading-color);
     }
 
     .article h1 {
@@ -1383,20 +2017,81 @@ function renderStyles(): string {
       line-height: 1.06;
     }
 
+    .article-hero {
+      display: grid;
+      gap: 28px;
+      margin: 0 0 54px;
+    }
+
+    .article-hero h1 {
+      margin: 0;
+      max-width: none;
+      font-family: var(--sans);
+      font-size: clamp(54px, 7vw, 88px);
+      line-height: 0.94;
+      letter-spacing: -0.07em;
+      color: var(--reader-title-color);
+    }
+
     .article h1 + p,
     .article .transcript-kicker {
       margin-top: -4px;
       margin-bottom: 40px;
       font-family: var(--sans);
-      color: var(--muted);
+      color: var(--reader-muted-color);
       font-size: 15px;
       line-height: 1.8;
       letter-spacing: 0.02em;
     }
 
+    .article .article-pullquote {
+      margin: 0;
+      padding: 0 0 0 28px;
+      border-left: 4px solid var(--reader-quote-line);
+    }
+
+    .article-hero .transcript-kicker {
+      margin: 0;
+      max-width: none;
+      color: rgba(112, 105, 95, 0.95);
+      font-family: var(--serif);
+      font-size: clamp(28px, 3vw, 42px);
+      line-height: 1.28;
+      font-style: italic;
+      letter-spacing: -0.01em;
+      opacity: 1;
+    }
+
+    .article-quote-source {
+      color: inherit;
+      white-space: nowrap;
+    }
+
+    .article-quote-source:empty {
+      display: none;
+    }
+
+    .article-media {
+      position: relative;
+      margin: 0;
+      padding-bottom: 44px;
+    }
+
+    .article-media-image {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      border-radius: 30px;
+      background: linear-gradient(135deg, rgba(34, 31, 26, 0.08), rgba(34, 31, 26, 0.18));
+      box-shadow:
+        0 26px 70px rgba(37, 29, 21, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+
     .article .reader-label {
       margin: 0 0 10px;
-      color: var(--muted);
+      color: var(--reader-muted-color);
       font-family: var(--sans);
       font-size: 12px;
       letter-spacing: 0.14em;
@@ -1431,9 +2126,10 @@ function renderStyles(): string {
     .article .timestamp {
       display: inline-flex;
       align-items: center;
+      gap: 6px;
       padding: 4px 10px;
       border-radius: 999px;
-      background: rgba(22, 22, 22, 0.06);
+      background: var(--reader-soft-surface);
       color: var(--muted-strong);
       font-family: var(--sans);
       font-size: 12px;
@@ -1441,6 +2137,17 @@ function renderStyles(): string {
       letter-spacing: 0.06em;
       white-space: nowrap;
       vertical-align: middle;
+    }
+
+    .article .timestamp::before {
+      content: "";
+      width: 14px;
+      height: 10px;
+      flex: none;
+      display: block;
+      background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none'%3E%3Crect width='28' height='20' rx='6' fill='%23FF0033'/%3E%3Cpath d='M12 6.1L18.4 10L12 13.9V6.1Z' fill='white'/%3E%3C/svg%3E")
+        center / contain no-repeat;
     }
 
     .article .timestamp-link {
@@ -1472,6 +2179,10 @@ function renderStyles(): string {
       opacity: 0;
     }
 
+    .article .timestamp.ghost::before {
+      display: none;
+    }
+
     .article p {
       margin: 0 0 30px;
       opacity: 0.9;
@@ -1489,14 +2200,14 @@ function renderStyles(): string {
 
     .article .qa {
       display: grid;
-      grid-template-columns: 84px 80px minmax(0, 1fr);
+      grid-template-columns: 140px minmax(0, 1fr);
       gap: 16px;
       align-items: start;
       margin: 0 0 18px;
       padding: 12px 0;
       border-top: 1px solid rgba(33, 24, 17, 0.06);
       font-family: var(--sans);
-      font-size: 16px;
+      font-size: calc(16px * var(--reader-copy-scale));
       line-height: 1.9;
     }
 
@@ -1505,7 +2216,14 @@ function renderStyles(): string {
     }
 
     .article .qa.no-time {
-      grid-template-columns: 80px minmax(0, 1fr);
+      grid-template-columns: 140px minmax(0, 1fr);
+    }
+
+    .article .qa-meta {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      min-width: 0;
     }
 
     .article .qa-time {
@@ -1533,7 +2251,7 @@ function renderStyles(): string {
       font-weight: 700;
       font-family: var(--sans);
       letter-spacing: 0.01em;
-      padding-top: 3px;
+      padding-top: 0;
     }
 
     .article .qa-body {
@@ -1550,9 +2268,9 @@ function renderStyles(): string {
 
     .article .transcript-body {
       font-family: var(--sans);
-      font-size: 17px;
+      font-size: calc(17px * var(--reader-copy-scale));
       line-height: 1.8;
-      color: var(--text);
+      color: var(--reader-copy-color);
       opacity: 0.9;
     }
 
@@ -1560,13 +2278,13 @@ function renderStyles(): string {
       margin: 30px 0;
       padding: 18px 20px;
       border-left: 3px solid rgba(22, 22, 22, 0.45);
-      background: linear-gradient(135deg, rgba(22, 22, 22, 0.05), rgba(22, 22, 22, 0.02));
+      background: linear-gradient(135deg, var(--reader-soft-surface), rgba(22, 22, 22, 0.02));
       border-radius: 0 18px 18px 0;
     }
 
     .article blockquote p {
       margin: 0;
-      font-size: 19px;
+      font-size: calc(19px * var(--reader-copy-scale));
       line-height: 1.9;
       opacity: 0.92;
     }
@@ -1585,11 +2303,11 @@ function renderStyles(): string {
       font-size: 0.9em;
       padding: 0.12em 0.32em;
       border-radius: 6px;
-      background: rgba(33, 24, 17, 0.06);
+      background: var(--reader-soft-surface);
     }
 
     .workbench {
-      width: min(900px, 100%);
+      width: min(1080px, 100%);
       margin: 0 auto 40px;
       display: none;
       gap: 18px;
@@ -1663,7 +2381,7 @@ function renderStyles(): string {
     }
 
     .empty {
-      width: min(900px, 100%);
+      width: min(1080px, 100%);
       margin: 112px auto 0;
       text-align: center;
       color: var(--muted);
@@ -1689,40 +2407,31 @@ function renderStyles(): string {
       line-height: 1;
     }
 
+    @keyframes loading-wave {
+      0% { background-position: 200% 0; }
+      100% { background-position: -20% 0; }
+    }
+
+    @keyframes loading-sheen {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    @keyframes loading-pulse {
+      0%, 100% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(157, 108, 47, 0.34);
+      }
+      50% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(157, 108, 47, 0);
+      }
+    }
+
     .fineprint {
       color: var(--muted);
       font-size: 13px;
       line-height: 1.7;
-    }
-
-    .article-back-rail {
-      position: sticky;
-      top: 34px;
-      align-self: start;
-    }
-
-    .article-topbar {
-      margin: 8px 0 0;
-      display: flex;
-      justify-content: flex-start;
-    }
-
-    .article-back {
-      min-width: 0;
-      min-height: 0;
-      padding: 0;
-      background: transparent;
-      border: 0;
-      box-shadow: none;
-      color: var(--muted-strong);
-      font: 600 13px/1.2 var(--sans);
-      letter-spacing: 0.02em;
-      text-transform: none;
-    }
-
-    .article-back:hover:not(:disabled) {
-      transform: none;
-      color: var(--accent-strong);
     }
 
     [data-search-animate] {
@@ -1806,6 +2515,7 @@ function renderStyles(): string {
       }
 
       .shell {
+        --reader-frame-gutter: 24px;
         height: auto;
         min-height: calc(100vh - 20px);
         border-radius: 26px;
@@ -1850,20 +2560,30 @@ function renderStyles(): string {
 
       .article-wrap {
         overflow: visible;
-        padding: 24px 24px 48px;
+        padding: 24px 24px 120px;
       }
 
-      .app-body[data-view="article"] .article-wrap {
-        grid-template-columns: 1fr;
-        row-gap: 20px;
+      .article-hero {
+        gap: 24px;
+        margin-bottom: 46px;
       }
 
-      .article-back-rail {
-        position: static;
+      .article-hero h1 {
+        max-width: 100%;
+        font-size: clamp(42px, 10vw, 72px);
       }
 
-      .article-topbar {
-        margin: 0;
+      .article-hero .transcript-kicker {
+        max-width: 100%;
+        font-size: clamp(24px, 4.6vw, 34px);
+      }
+
+      .article-media {
+        padding-bottom: 0;
+      }
+
+      .reader-tooldeck {
+        right: 18px;
       }
     }
 
@@ -1873,6 +2593,7 @@ function renderStyles(): string {
       }
 
       .shell {
+        --reader-frame-gutter: 14px;
         min-height: calc(100vh - 84px);
         border-radius: 26px;
       }
@@ -1890,6 +2611,52 @@ function renderStyles(): string {
         gap: 10px;
         padding-top: 12px;
         padding-bottom: 12px;
+      }
+
+      .reading-topbar {
+        --reading-topbar-offset: 18px;
+        min-height: 56px;
+        padding: 12px;
+        gap: 14px;
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .article-wrap {
+        padding-bottom: 156px;
+      }
+
+      .reading-back {
+        min-height: 34px;
+        padding: 0 12px 0 10px;
+        font-size: 14px;
+      }
+
+      .reading-progress {
+        height: 8px;
+      }
+
+      .topbar[data-view="article"] .topnav {
+        justify-self: end;
+        gap: 18px;
+      }
+
+      .reader-tooldeck {
+        top: auto;
+        right: 50%;
+        bottom: 94px;
+        transform: translateX(50%);
+      }
+
+      .reader-tooldeck-card {
+        grid-auto-flow: column;
+        gap: 6px;
+        padding: 6px;
+        border-radius: 20px;
+      }
+
+      .reader-tool-button {
+        min-width: 68px;
+        min-height: 60px;
       }
 
       .landing-center {
@@ -1937,6 +2704,23 @@ function renderStyles(): string {
         font-size: 24px;
       }
 
+      .article-hero {
+        gap: 20px;
+        margin-bottom: 40px;
+      }
+
+      .article .article-pullquote {
+        padding-left: 18px;
+      }
+
+      .article-hero .transcript-kicker {
+        font-size: clamp(22px, 7vw, 28px);
+      }
+
+      .article-media-image {
+        border-radius: 24px;
+      }
+
       input[type="url"] {
         font-size: 18px;
       }
@@ -1961,7 +2745,7 @@ function renderStyles(): string {
       }
 
       .article-wrap {
-        padding: 20px 14px 36px;
+        padding: 20px var(--reader-frame-gutter) 36px;
       }
 
       .article .section-heading {
@@ -1995,26 +2779,194 @@ function renderStyles(): string {
 
 function renderScript(): string {
   return `
+    const READING_MODE_OPTIONS = ${JSON.stringify(READING_MODE_OPTIONS)};
+    const DEFAULT_READING_MODE = ${JSON.stringify(DEFAULT_READING_MODE)};
     const HOT_ITEMS = [
       {
         title: 'Oceanic Currents and the Future of Energy',
         thumbnailUrl: 'https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg',
-        label: 'TRANSCRIPT',
+        label: 'VIDEO',
       },
       {
         title: 'Sustainable Architecture in Coastal Areas',
         thumbnailUrl: 'https://i.ytimg.com/vi/pJY0mBWHPw4/hqdefault.jpg',
-        label: 'TRANSCRIPT',
+        label: 'VIDEO',
       },
       {
         title: 'Principles of Modern Typography in Web Design',
         thumbnailUrl: 'https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg',
-        label: 'TRANSCRIPT',
+        label: 'VIDEO',
       },
     ];
 
     const TRANSCRIPT_CACHE_PREFIX = 'xvc:transcript:';
+    const TRANSLATION_CACHE_PREFIX = 'xvc:translation:';
+    const TRANSLATION_CACHE_VERSION = 2;
+    const GEMINI_API_KEY_STORAGE_KEY = 'xvc:settings:gemini-api-key';
     const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+    const FULL_GEMINI_LOADING_HINTS = {
+      analyzing: [
+        {
+          title: 'Gemini 正在拆解字幕脉络',
+          body: '先通读整段字幕，再提炼亮点句和可能说话人。',
+          status: '正在拆解字幕脉络...',
+        },
+        {
+          title: 'Gemini 正在挑选高亮句',
+          body: '正在寻找最适合作为开头引语的那一句。',
+          status: '正在挑选高亮句...',
+        },
+        {
+          title: 'Gemini 正在判断说话人线索',
+          body: '只有在明显是访谈或对谈时，才会保留可能说话人。',
+          status: '正在判断说话人线索...',
+        },
+        {
+          title: 'Gemini 正在组织结构化结果',
+          body: '标题翻译、摘要和分段信息正在一起整理。',
+          status: '正在组织结构化结果...',
+        },
+        {
+          title: 'Gemini 正在识别内容重心',
+          body: '正在判断这一期视频最值得优先呈现的主题。',
+          status: '正在识别内容重心...',
+        },
+        {
+          title: 'Gemini 正在比较多个候选摘要',
+          body: '会从多句候选表达里挑出更适合作为开头的版本。',
+          status: '正在比较候选摘要...',
+        },
+        {
+          title: 'Gemini 正在梳理段落边界',
+          body: '按语义转折和时间顺序划分更自然的内容片段。',
+          status: '正在梳理段落边界...',
+        },
+        {
+          title: 'Gemini 正在检查是否适合标注说话人',
+          body: '如果不是明显对谈场景，会优先保留无说话人的纯内容视图。',
+          status: '正在检查说话人标注条件...',
+        },
+        {
+          title: 'Gemini 正在压缩冗余信息',
+          body: '口头禅、重复和噪音内容会尽量被过滤掉。',
+          status: '正在压缩冗余信息...',
+        },
+        {
+          title: 'Gemini 正在准备首屏信息',
+          body: '标题中文、引语和内容结构正在同步整理。',
+          status: '正在准备首屏信息...',
+        },
+      ],
+      translating_dialogue: [
+        {
+          title: 'Gemini 正在逐段翻译',
+          body: '按时间顺序处理片段，尽量保留原话语气。',
+          status: '正在逐段翻译内容...',
+        },
+        {
+          title: 'Gemini 正在对齐时间戳',
+          body: '翻译内容会和原始时间点一一对应，方便回跳视频。',
+          status: '正在对齐时间戳...',
+        },
+        {
+          title: 'Gemini 正在打磨中文表达',
+          body: '会优先保持自然、直接、适合阅读的中文语感。',
+          status: '正在打磨中文表达...',
+        },
+        {
+          title: 'Gemini 正在继续写入后续片段',
+          body: '剩余片段生成中，新的内容会陆续出现。',
+          status: '正在继续写入后续片段...',
+        },
+        {
+          title: 'Gemini 正在统一中文语气',
+          body: '会尽量让整篇中文读起来连续、自然、不生硬。',
+          status: '正在统一中文语气...',
+        },
+        {
+          title: 'Gemini 正在处理下一段内容',
+          body: '新的段落正在生成，很快会接到当前内容后面。',
+          status: '正在处理下一段内容...',
+        },
+        {
+          title: 'Gemini 正在保留原文节奏',
+          body: '会尽量顺着原视频的推进顺序来呈现信息。',
+          status: '正在保留原文节奏...',
+        },
+        {
+          title: 'Gemini 正在修整长句',
+          body: '较长的口语句子会被适度整理得更适合阅读。',
+          status: '正在修整长句...',
+        },
+        {
+          title: 'Gemini 正在生成后续卡片',
+          body: '新的时间片段与对应内容正在陆续补上。',
+          status: '正在生成后续卡片...',
+        },
+        {
+          title: 'Gemini 正在核对片段顺序',
+          body: '确保内容顺序和时间线保持一致，阅读不会跳脱。',
+          status: '正在核对片段顺序...',
+        },
+        {
+          title: 'Gemini 正在补齐剩余内容',
+          body: '还没出现的部分正在继续生成，请再稍等一下。',
+          status: '正在补齐剩余内容...',
+        },
+        {
+          title: 'Gemini 正在润色当前批次',
+          body: '这一批片段正在做最后的中文整理。',
+          status: '正在润色当前批次...',
+        },
+      ],
+    };
+    const QUICK_GEMINI_LOADING_HINTS = {
+      analyzing: [
+        {
+          title: 'Gemini 正在识别内容结构',
+          body: '先判断这是访谈对谈，还是普通内容讲述。',
+          status: '正在识别内容结构...',
+        },
+        {
+          title: 'Gemini 正在按问答或主题分段',
+          body: '对谈内容优先按提问与回答切分，其他内容按主题推进切分。',
+          status: '正在按问答或主题分段...',
+        },
+        {
+          title: 'Gemini 正在梳理段落边界',
+          body: '会尽量让每段内部完整、段与段之间自然过渡。',
+          status: '正在梳理段落边界...',
+        },
+        {
+          title: 'Gemini 正在准备速读结构',
+          body: '先把整篇结构搭出来，后面再逐段补中心问题和答案。',
+          status: '正在准备速读结构...',
+        },
+      ],
+      summarizing_sections: [
+        {
+          title: 'Gemini 正在提炼每段核心问题',
+          body: '即使不是明确访谈，也会改写成这一段在回答的核心问题。',
+          status: '正在提炼每段核心问题...',
+        },
+        {
+          title: 'Gemini 正在整理每段核心回答',
+          body: '每一段都会压缩成最值得先读的一条答案或结论。',
+          status: '正在整理每段核心回答...',
+        },
+        {
+          title: 'Gemini 正在翻译中文速读版',
+          body: '中心问题与答案会同步翻成自然、直接的中文。',
+          status: '正在翻译中文速读版...',
+        },
+        {
+          title: 'Gemini 正在继续写入后续段落',
+          body: '新的分段卡片会按顺序陆续补到页面里。',
+          status: '正在继续写入后续段落...',
+        },
+      ],
+    };
+    const GEMINI_LOADING_HINT_INTERVAL_MS = 2200;
     const form = document.querySelector('[data-form]');
     const input = document.querySelector('[data-input]');
     const inputMirror = document.querySelector('[data-input-mirror]');
@@ -2028,9 +2980,21 @@ function renderScript(): string {
     const toast = document.querySelector('[data-toast]');
     const toastTitle = document.querySelector('[data-toast-title]');
     const toastBody = document.querySelector('[data-toast-body]');
+    const shell = document.querySelector('.shell');
+    const topbar = document.querySelector('[data-topbar]');
     const articleWrap = document.querySelector('[data-article-wrap]');
+    const readerShell = document.querySelector('.reader-shell');
+    const readingTopbar = document.querySelector('[data-reading-topbar]');
     const backButton = document.querySelector('[data-back-button]');
+    const readingProgress = document.querySelector('[data-reading-progress]');
+    const readerTypeButton = document.querySelector('[data-reader-type-button]');
+    const readerThemeButton = document.querySelector('[data-reader-theme-button]');
+    const readerThemeLabel = document.querySelector('[data-reader-theme-label]');
+    const readerLayoutButton = document.querySelector('[data-reader-layout-button]');
     const article = document.querySelector('[data-article]');
+    const articleLoading = document.querySelector('[data-article-loading]');
+    const articleLoadingTitle = document.querySelector('[data-article-loading-title]');
+    const articleLoadingBody = document.querySelector('[data-article-loading-body]');
     const empty = document.querySelector('[data-empty]');
     const error = document.querySelector('[data-error]');
     const sideTitle = document.querySelector('[data-side-title]');
@@ -2047,6 +3011,12 @@ function renderScript(): string {
     const settingsButton = document.querySelector('[data-settings-button]');
     const settingsMenu = document.querySelector('[data-settings-menu]');
     const settingsItems = Array.from(document.querySelectorAll('[data-settings-item]'));
+    const geminiKeyPreview = document.querySelector('[data-gemini-key-preview]');
+    const geminiKeyModal = document.querySelector('[data-gemini-key-modal]');
+    const geminiKeyInput = document.querySelector('[data-gemini-key-input]');
+    const geminiKeyCancelButton = document.querySelector('[data-gemini-key-cancel]');
+    const geminiKeyRemoveButton = document.querySelector('[data-gemini-key-remove]');
+    const geminiKeySaveButton = document.querySelector('[data-gemini-key-save]');
     const landingPanel = document.querySelector('[data-landing-panel]');
 
     let currentController = null;
@@ -2057,9 +3027,406 @@ function renderScript(): string {
     let suppressCacheHitToast = false;
     let activeSavedTab = 'recent';
     let savedTabOverridden = false;
-    let activeReadingMode = 'quick';
-    let currentSideModeTag = 'TRANSCRIPT';
+    let activeReadingMode = DEFAULT_READING_MODE;
+    let currentSideModeTag = 'VIDEO';
     let currentSourceSummary = '';
+    let currentSourceTitle = '';
+    let currentSourceAuthor = '';
+    let currentThumbnailUrl = '';
+    let currentTranslatedTitleZh = '';
+    let currentSummaryZh = '';
+    let latestCompletionMeta = null;
+    let activeReaderType = 'medium';
+    let activeReaderTheme = 'paper';
+    let activeReaderLayout = 'standard';
+    let activeReadingProgressPointerId = null;
+    let customGeminiApiKey = '';
+    let loadingHintTimer = null;
+    let loadingHintStage = '';
+    let loadingHintIndex = 0;
+    let loadingHintFallbackTitle = '';
+    let loadingHintFallbackBody = '';
+    let currentRenderedReadingMode = ${JSON.stringify(DEFAULT_READING_MODE)};
+
+    function usesGeminiReadingFlow(mode) {
+      return READING_MODE_OPTIONS.some((option) => option.value === normalizeReadingMode(mode));
+    }
+
+    function normalizeReadingMode(mode) {
+      return READING_MODE_OPTIONS.some((option) => option.value === mode)
+        ? mode
+        : ${JSON.stringify(DEFAULT_READING_MODE)};
+    }
+
+    function getLoadingHintsForMode(mode) {
+      const normalizedMode = normalizeReadingMode(mode);
+      if (normalizedMode === 'full') {
+        return FULL_GEMINI_LOADING_HINTS;
+      }
+
+      return QUICK_GEMINI_LOADING_HINTS;
+    }
+
+    function syncRenderedReadingMode(mode) {
+      currentRenderedReadingMode = normalizeReadingMode(mode);
+
+      if (appBody) {
+        appBody.dataset.readingMode = currentRenderedReadingMode;
+      }
+
+      if (articleWrap) {
+        articleWrap.dataset.readingMode = currentRenderedReadingMode;
+      }
+
+      if (readerShell) {
+        readerShell.dataset.readingMode = currentRenderedReadingMode;
+      }
+
+      if (article) {
+        article.dataset.readingMode = currentRenderedReadingMode;
+      }
+    }
+
+    const READER_THEME_OPTIONS = [
+      { value: 'paper', label: '主题' },
+      { value: 'sepia', label: 'Warm' },
+      { value: 'mist', label: 'Cool' },
+    ];
+    const READER_TYPE_OPTIONS = [
+      { value: 'medium', label: 'Default text' },
+      { value: 'large', label: 'Large text' },
+      { value: 'xlarge', label: 'Extra large text' },
+    ];
+    const READER_LAYOUT_OPTIONS = [
+      { value: 'focus', label: 'Focus width' },
+      { value: 'standard', label: 'Standard width' },
+      { value: 'wide', label: 'Wide width' },
+    ];
+
+    function syncReaderTools() {
+      if (shell) {
+        shell.dataset.readerLayout = activeReaderLayout;
+      }
+
+      if (articleWrap) {
+        articleWrap.dataset.readerType = activeReaderType;
+        articleWrap.dataset.readerTheme = activeReaderTheme;
+        articleWrap.dataset.readerLayout = activeReaderLayout;
+      }
+
+      if (readerTypeButton) {
+        const currentType = READER_TYPE_OPTIONS.find((option) => option.value === activeReaderType) || READER_TYPE_OPTIONS[0];
+        readerTypeButton.setAttribute('aria-label', 'Adjust text size. Current: ' + currentType.label);
+        readerTypeButton.removeAttribute('aria-disabled');
+        readerTypeButton.classList.remove('active');
+      }
+
+      if (readerThemeButton) {
+        const currentTheme = READER_THEME_OPTIONS.find((option) => option.value === activeReaderTheme) || READER_THEME_OPTIONS[0];
+        readerThemeButton.setAttribute('aria-label', 'Change reader theme. Current: ' + currentTheme.label);
+        readerThemeButton.classList.remove('active');
+      }
+
+      if (readerThemeLabel) {
+        readerThemeLabel.textContent = '主题';
+      }
+
+      if (readerLayoutButton) {
+        const currentLayout = READER_LAYOUT_OPTIONS.find((option) => option.value === activeReaderLayout) || READER_LAYOUT_OPTIONS[1];
+        readerLayoutButton.setAttribute(
+          'aria-label',
+          'Toggle reading width. Current: ' + currentLayout.label,
+        );
+        readerLayoutButton.classList.remove('active');
+      }
+
+      updateReadingProgress();
+    }
+
+    function setTopbarView(view) {
+      if (!topbar) {
+        return;
+      }
+
+      topbar.dataset.view = view === 'article' ? 'article' : 'search';
+    }
+
+    function setReadingProgressValue(value) {
+      if (!readingProgress) {
+        return;
+      }
+
+      const normalized = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      readingProgress.style.setProperty('--reading-progress', normalized.toFixed(4));
+      readingProgress.style.setProperty('--reading-progress-percent', (normalized * 100).toFixed(2) + '%');
+      readingProgress.setAttribute('aria-valuenow', String(Math.round(normalized * 100)));
+    }
+
+    function setArticleScrollFromProgress(clientX) {
+      if (!articleWrap || !readingProgress || !appBody || appBody.dataset.view !== 'article') {
+        return;
+      }
+
+      const rect = readingProgress.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+
+      const normalized = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const maxScroll = articleWrap.scrollHeight - articleWrap.clientHeight;
+      articleWrap.scrollTop = maxScroll <= 1 ? 0 : normalized * maxScroll;
+      setReadingProgressValue(maxScroll <= 1 ? 1 : normalized);
+    }
+
+    function endReadingProgressDrag(pointerId) {
+      if (!readingProgress) {
+        return;
+      }
+
+      if (activeReadingProgressPointerId !== null && pointerId !== undefined && pointerId !== activeReadingProgressPointerId) {
+        return;
+      }
+
+      const pointerToRelease = activeReadingProgressPointerId;
+      activeReadingProgressPointerId = null;
+      readingProgress.classList.remove('dragging');
+
+      if (pointerToRelease !== null && readingProgress.hasPointerCapture(pointerToRelease)) {
+        try {
+          readingProgress.releasePointerCapture(pointerToRelease);
+        } catch (_error) {
+        }
+      }
+    }
+
+    function startReadingProgressDrag(event) {
+      if (!readingProgress || !articleWrap || !appBody || appBody.dataset.view !== 'article') {
+        return;
+      }
+
+      if (typeof event.button === 'number' && event.button !== 0) {
+        return;
+      }
+
+      activeReadingProgressPointerId = event.pointerId;
+      readingProgress.classList.add('dragging');
+      readingProgress.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      setArticleScrollFromProgress(event.clientX);
+    }
+
+    function handleReadingProgressDrag(event) {
+      if (activeReadingProgressPointerId !== event.pointerId) {
+        return;
+      }
+
+      event.preventDefault();
+      setArticleScrollFromProgress(event.clientX);
+    }
+
+    function updateReadingTopbarPosition() {
+      if (!readingTopbar) {
+        return;
+      }
+
+      if (!appBody || appBody.dataset.view !== 'article') {
+        readingTopbar.style.removeProperty('left');
+        readingTopbar.style.removeProperty('width');
+        readingTopbar.style.removeProperty('top');
+        return;
+      }
+
+      const target = readerShell || articleWrap;
+      if (!target) {
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+
+      readingTopbar.style.left = Math.round(rect.left + (rect.width / 2)) + 'px';
+      if (articleWrap && articleWrap.dataset.loadingState === 'initial') {
+        readingTopbar.style.removeProperty('width');
+      } else {
+        readingTopbar.style.width = Math.round(rect.width) + 'px';
+      }
+      readingTopbar.style.removeProperty('top');
+    }
+
+    function updateReadingProgress() {
+      updateReadingTopbarPosition();
+
+      if (!articleWrap || !appBody || appBody.dataset.view !== 'article') {
+        setReadingProgressValue(0);
+        return;
+      }
+
+      if (!hasArticleContent) {
+        setReadingProgressValue(0);
+        return;
+      }
+
+      const maxScroll = articleWrap.scrollHeight - articleWrap.clientHeight;
+      if (maxScroll <= 1) {
+        setReadingProgressValue(1);
+        return;
+      }
+
+      setReadingProgressValue(articleWrap.scrollTop / maxScroll);
+    }
+
+    function setArticleLoading(active, title, body) {
+      if (!articleLoading) {
+        return;
+      }
+
+      if (readerShell) {
+        if (active) {
+          readerShell.dataset.state = 'loading';
+        } else {
+          readerShell.removeAttribute('data-state');
+        }
+      }
+
+      if (articleWrap) {
+        if (active) {
+          articleWrap.dataset.loadingState = 'initial';
+        } else {
+          articleWrap.removeAttribute('data-loading-state');
+        }
+      }
+
+      articleLoading.classList.toggle('hidden', !active);
+
+      if (!active) {
+        updateReadingProgress();
+        return;
+      }
+
+      if (articleLoadingTitle) {
+        articleLoadingTitle.textContent = title || '正在准备内容';
+      }
+      if (articleLoadingBody) {
+        articleLoadingBody.textContent = body || '我们正在生成您需要的内容并组织内容，请稍等片刻。';
+      }
+
+      updateReadingProgress();
+    }
+
+    function getLoadingHintEntry(stage, index) {
+      const hints = getLoadingHintsForMode(currentRenderedReadingMode)[stage];
+      if (!hints || !hints.length) {
+        return null;
+      }
+
+      return hints[index % hints.length];
+    }
+
+    function applyLoadingHint() {
+      const hint = getLoadingHintEntry(loadingHintStage, loadingHintIndex);
+      if (!hint) {
+        return;
+      }
+
+      if (articleLoading && !articleLoading.classList.contains('hidden')) {
+        if (articleLoadingTitle) {
+          articleLoadingTitle.textContent = hint.title || loadingHintFallbackTitle || '正在准备内容';
+        }
+        if (articleLoadingBody) {
+          articleLoadingBody.textContent = hint.body || loadingHintFallbackBody || '我们正在生成您需要的内容并组织内容，请稍等片刻。';
+        }
+      }
+
+      const existing = article.querySelector('[data-dialogue-loading]');
+      if (existing) {
+        const title = existing.querySelector('.dialogue-loading-title');
+        const copy = existing.querySelector('.dialogue-loading-copy');
+        if (title) {
+          title.textContent = hint.title || loadingHintFallbackTitle || '正在继续生成内容';
+        }
+        if (copy) {
+          copy.textContent = hint.body || loadingHintFallbackBody || '努力生成高质量的剩余内容中，请稍等。。。';
+        }
+      }
+
+      if (hint.status) {
+        setStatus(hint.status, { busy: true, mode: 'writing' });
+      }
+    }
+
+    function stopLoadingHintCycle() {
+      if (loadingHintTimer) {
+        clearInterval(loadingHintTimer);
+        loadingHintTimer = null;
+      }
+
+      loadingHintStage = '';
+      loadingHintIndex = 0;
+      loadingHintFallbackTitle = '';
+      loadingHintFallbackBody = '';
+    }
+
+    function startLoadingHintCycle(stage, fallbackTitle, fallbackBody) {
+      const hints = getLoadingHintsForMode(currentRenderedReadingMode)[stage];
+      if (!hints || !hints.length) {
+        stopLoadingHintCycle();
+        return;
+      }
+
+      const stageChanged = loadingHintStage !== stage;
+      loadingHintStage = stage;
+      loadingHintFallbackTitle = fallbackTitle || '';
+      loadingHintFallbackBody = fallbackBody || '';
+
+      if (stageChanged) {
+        loadingHintIndex = 0;
+      }
+
+      applyLoadingHint();
+
+      if (loadingHintTimer && !stageChanged) {
+        return;
+      }
+
+      if (loadingHintTimer) {
+        clearInterval(loadingHintTimer);
+      }
+
+      loadingHintTimer = setInterval(() => {
+        const currentHints = getLoadingHintsForMode(currentRenderedReadingMode)[loadingHintStage];
+        if (!currentHints || !currentHints.length) {
+          stopLoadingHintCycle();
+          return;
+        }
+
+        loadingHintIndex = (loadingHintIndex + 1) % currentHints.length;
+        applyLoadingHint();
+      }, GEMINI_LOADING_HINT_INTERVAL_MS);
+    }
+
+    function setDialogueLoading(active, body) {
+      const existing = article.querySelector('[data-dialogue-loading]');
+      if (!active) {
+        if (existing) {
+          existing.remove();
+        }
+        return;
+      }
+
+      if (existing) {
+        const title = existing.querySelector('.dialogue-loading-title');
+        const copy = existing.querySelector('.dialogue-loading-copy');
+        if (title) {
+          title.textContent = '正在继续生成内容';
+        }
+        if (copy) {
+          copy.textContent = body || '努力生成高质量的剩余内容中，请稍等。。。';
+        }
+        applyLoadingHint();
+      }
+    }
 
     function extractVideoId(input) {
       const trimmed = (input || '').trim();
@@ -2073,6 +3440,11 @@ function renderScript(): string {
 
     function getTranscriptCacheKey(videoId) {
       return TRANSCRIPT_CACHE_PREFIX + videoId;
+    }
+
+    function getTranslationCacheKey(videoId, readingMode) {
+      const normalizedMode = normalizeReadingMode(readingMode);
+      return TRANSLATION_CACHE_PREFIX + normalizedMode + ':' + videoId;
     }
 
     function readCachedTranscript(videoId) {
@@ -2128,6 +3500,106 @@ function renderScript(): string {
       } catch {}
 
       renderCachedTranscriptList();
+    }
+
+    function readCachedTranslation(videoId, readingMode) {
+      if (!videoId) {
+        return null;
+      }
+
+      try {
+        const raw = localStorage.getItem(getTranslationCacheKey(videoId, readingMode));
+        if (!raw) {
+          return null;
+        }
+
+        const parsed = JSON.parse(raw);
+        const version =
+          parsed && typeof parsed === 'object' && typeof parsed.version === 'number'
+            ? parsed.version
+            : 0;
+        const cachedAt =
+          parsed && typeof parsed === 'object' && typeof parsed.cachedAt === 'number'
+            ? parsed.cachedAt
+            : 0;
+        const articleHtml =
+          parsed && typeof parsed === 'object' && typeof parsed.articleHtml === 'string'
+            ? parsed.articleHtml
+            : '';
+        const meta =
+          parsed && typeof parsed === 'object' && parsed.meta && typeof parsed.meta === 'object'
+            ? parsed.meta
+            : null;
+
+        const cachedReadingMode =
+          meta && typeof meta === 'object' && typeof meta.readingMode === 'string'
+            ? meta.readingMode
+            : '';
+
+        if (!meta || meta.videoId !== videoId || !articleHtml.trim() || cachedReadingMode !== normalizeReadingMode(readingMode)) {
+          localStorage.removeItem(getTranslationCacheKey(videoId, readingMode));
+          return null;
+        }
+
+        if (version !== TRANSLATION_CACHE_VERSION) {
+          localStorage.removeItem(getTranslationCacheKey(videoId, readingMode));
+          return null;
+        }
+
+        if (!cachedAt || Date.now() - cachedAt > TRANSCRIPT_CACHE_TTL_MS) {
+          localStorage.removeItem(getTranslationCacheKey(videoId, readingMode));
+          return null;
+        }
+
+        return {
+          articleHtml,
+          meta,
+        };
+      } catch {
+        try {
+          localStorage.removeItem(getTranslationCacheKey(videoId, readingMode));
+        } catch {}
+        return null;
+      }
+    }
+
+    function writeCachedTranslation(videoId, readingMode, articleHtml, meta) {
+      if (!videoId || !articleHtml || !meta) {
+        return;
+      }
+
+      try {
+        localStorage.setItem(
+          getTranslationCacheKey(videoId, readingMode),
+          JSON.stringify({
+            version: TRANSLATION_CACHE_VERSION,
+            cachedAt: Date.now(),
+            articleHtml,
+            meta,
+          }),
+        );
+      } catch {}
+    }
+
+    function renderCachedTranslation(cached) {
+      if (!cached || !cached.articleHtml || !cached.meta) {
+        return false;
+      }
+
+      article.innerHTML = cached.articleHtml;
+      if (!article.querySelector('[data-article-hero]')) {
+        article.innerHTML = '';
+        return false;
+      }
+      empty.classList.add('hidden');
+      hasArticleContent = true;
+      renderMeta(cached.meta);
+      setArticleLoading(false);
+      setDialogueLoading(false);
+      latestCompletionMeta = cached.meta;
+      enhanceTimestampLinks(article);
+      updateReadingProgress();
+      return true;
     }
 
     function escapeHtmlText(input) {
@@ -2201,8 +3673,8 @@ function renderScript(): string {
     function renderSavedItems(items, interactive) {
       cacheList.innerHTML = items.map((item) => {
         const thumb = item.thumbnailUrl
-          ? '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'TRANSCRIPT') + '"><img src="' + escapeHtmlText(item.thumbnailUrl) + '" alt="' + escapeHtmlText(item.title) + ' 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>'
-          : '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'TRANSCRIPT') + '"></div>';
+          ? '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'VIDEO') + '"><img src="' + escapeHtmlText(item.thumbnailUrl) + '" alt="' + escapeHtmlText(item.title) + ' 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>'
+          : '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'VIDEO') + '"></div>';
 
         const openTag = interactive && item.videoId
           ? '<button type="button" class="cache-item' + (item.thumbnailUrl ? ' has-image' : '') + '" data-cache-video="' + escapeHtmlText(item.videoId) + '">'
@@ -2250,7 +3722,7 @@ function renderScript(): string {
           title: entry.title,
           author: entry.author,
           thumbnailUrl: entry.thumbnailUrl,
-          label: 'TRANSCRIPT',
+          label: 'VIDEO',
         })),
         true,
       );
@@ -2310,6 +3782,90 @@ function renderScript(): string {
       }, 2600);
     }
 
+    function isGeminiHighDemandWarning(message) {
+      const normalized = String(message || '').toLowerCase();
+      return normalized.includes('503')
+        || normalized.includes('high demand')
+        || normalized.includes('unavailable');
+    }
+
+    function readStoredGeminiApiKey() {
+      try {
+        return (localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY) || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function writeStoredGeminiApiKey(value) {
+      try {
+        if (value) {
+          localStorage.setItem(GEMINI_API_KEY_STORAGE_KEY, value);
+        } else {
+          localStorage.removeItem(GEMINI_API_KEY_STORAGE_KEY);
+        }
+      } catch {
+      }
+    }
+
+    function maskGeminiApiKey(value) {
+      if (!value) {
+        return '';
+      }
+
+      if (value.length <= 2) {
+        return value;
+      }
+
+      if (value.length <= 6) {
+        return value.slice(0, 1) + '*****' + value.slice(-1);
+      }
+
+      return value.slice(0, 2) + '*****' + value.slice(-4);
+    }
+
+    function updateGeminiKeyPreview() {
+      if (!geminiKeyPreview) {
+        return;
+      }
+
+      geminiKeyPreview.textContent = customGeminiApiKey ? maskGeminiApiKey(customGeminiApiKey) : '未设置';
+    }
+
+    function closeGeminiKeyModal() {
+      if (!geminiKeyModal) {
+        return;
+      }
+
+      geminiKeyModal.hidden = true;
+    }
+
+    function persistCustomGeminiKey(nextValue) {
+      const trimmed = (nextValue || '').trim();
+      customGeminiApiKey = trimmed;
+      writeStoredGeminiApiKey(trimmed);
+      updateGeminiKeyPreview();
+
+      if (trimmed) {
+        showToast('Gemini key 已保存', '当前将优先使用你自己的 key：' + maskGeminiApiKey(trimmed));
+      } else {
+        showToast('Gemini key 已移除', '后续将恢复使用服务端默认配置。');
+      }
+    }
+
+    function configureCustomGeminiKey() {
+      if (!geminiKeyModal || !geminiKeyInput) {
+        return;
+      }
+
+      geminiKeyInput.value = customGeminiApiKey;
+      geminiKeyModal.hidden = false;
+      requestAnimationFrame(() => {
+        geminiKeyInput.focus();
+        geminiKeyInput.select();
+      });
+    }
+
     function setSettingsMenuOpen(open) {
       if (!settingsNavItem || !settingsButton || !settingsMenu) {
         return;
@@ -2332,13 +3888,20 @@ function renderScript(): string {
     }
 
     function setActiveReadingMode(mode) {
-      activeReadingMode = mode === 'full' ? 'full' : 'quick';
+      activeReadingMode = normalizeReadingMode(mode);
       if (modeToggle) {
         modeToggle.setAttribute('data-mode', activeReadingMode);
+        const activeModeIndex = Math.max(0, READING_MODE_OPTIONS.findIndex((option) => option.value === activeReadingMode));
+        modeToggle.style.setProperty('--mode-count', String(Math.max(1, READING_MODE_OPTIONS.length)));
+        modeToggle.style.setProperty('--mode-index', String(activeModeIndex));
       }
       modeButtons.forEach((modeButton) => {
         modeButton.classList.toggle('active', modeButton.getAttribute('data-mode-submit') === activeReadingMode);
       });
+
+      if (!hasArticleContent && !currentController) {
+        syncRenderedReadingMode(activeReadingMode);
+      }
     }
 
     function playSearchReturnAnimation() {
@@ -2365,6 +3928,8 @@ function renderScript(): string {
 
     function showSearchView(options) {
       appBody.dataset.view = 'search';
+      setTopbarView('search');
+      setReadingProgressValue(0);
 
       if (options && options.animateReturn) {
         playSearchReturnAnimation();
@@ -2378,6 +3943,19 @@ function renderScript(): string {
 
     function showArticleView() {
       appBody.dataset.view = 'article';
+      setTopbarView('article');
+      updateReadingProgress();
+    }
+
+    function cancelCurrentRequest() {
+      if (!currentController) {
+        return;
+      }
+
+      const controller = currentController;
+      currentController = null;
+      controller.abort();
+      syncSubmitState();
     }
 
     async function startStream(endpoint, body, options) {
@@ -2385,19 +3963,29 @@ function renderScript(): string {
       resetArticle();
       showArticleView();
       setStatus('准备开始...', { busy: true, mode: 'fetching' });
+      setArticleLoading(true, '正在生成您需要的内容', '我们正在连接 YouTube 并准备内容，请稍等片刻。');
       suppressCacheHitToast = Boolean(options && options.suppressCacheHitToast);
 
-      if (currentController) {
-        currentController.abort();
-      }
+      cancelCurrentRequest();
 
-      currentController = new AbortController();
+      const requestController = new AbortController();
+      currentController = requestController;
       setLoading(true);
 
       try {
         const requestBody = body ? { ...body } : {};
         if (endpoint === '/api/generate') {
+          if (customGeminiApiKey) {
+            requestBody.geminiApiKey = customGeminiApiKey;
+          }
           const videoId = extractVideoId(requestBody.youtubeUrl || '');
+          if (usesGeminiReadingFlow(requestBody.readingMode)) {
+            const cachedTranslation = readCachedTranslation(videoId, requestBody.readingMode);
+            if (cachedTranslation && renderCachedTranslation(cachedTranslation)) {
+              showToast('已读取本地 AI 缓存', '这个视频的中文整理结果已缓存在本地，本次直接展示。');
+              return;
+            }
+          }
           const cachedTranscript = readCachedTranscript(videoId);
           if (cachedTranscript) {
             requestBody.cachedTranscript = cachedTranscript;
@@ -2410,7 +3998,7 @@ function renderScript(): string {
             'content-type': 'application/json',
           },
           body: JSON.stringify(requestBody),
-          signal: currentController.signal,
+          signal: requestController.signal,
         });
 
         if (!response.ok) {
@@ -2420,6 +4008,12 @@ function renderScript(): string {
 
         await consumeSse(response);
       } catch (err) {
+        if (currentController !== requestController) {
+          return;
+        }
+
+        setArticleLoading(false);
+        stopLoadingHintCycle();
         if (err?.name !== 'AbortError') {
           setError(err instanceof Error ? err.message : '请求失败，请稍后再试。');
           setStatus('生成中断', { busy: false, mode: 'idle' });
@@ -2427,30 +4021,45 @@ function renderScript(): string {
           setStatus('已停止', { busy: false, mode: 'idle' });
         }
       } finally {
-        currentController = null;
-        setLoading(false);
+        if (currentController === requestController) {
+          currentController = null;
+          setLoading(false);
+        }
         syncSubmitState();
       }
     }
 
     function resetArticle() {
+      stopLoadingHintCycle();
+      syncRenderedReadingMode(activeReadingMode);
       article.innerHTML = '';
       empty.classList.remove('hidden');
-      sideTitle.textContent = 'Open a YouTube transcript';
-      currentSideModeTag = 'TRANSCRIPT';
+      sideTitle.textContent = 'Open a YouTube video';
+      currentSideModeTag = 'VIDEO';
       currentSourceSummary = '';
+      currentSourceTitle = '';
+      currentSourceAuthor = '';
+      currentThumbnailUrl = '';
+      currentTranslatedTitleZh = '';
+      currentSummaryZh = '';
+      latestCompletionMeta = null;
       renderSideDetails();
+      setArticleLoading(false);
       sideThumb.removeAttribute('src');
       sideThumb.alt = '';
       sideCover.classList.remove('has-image');
       currentVideoId = '';
-      sideMetaTitle.textContent = 'Transcript viewer';
+      if (articleWrap) {
+        articleWrap.scrollTop = 0;
+      }
+      sideMetaTitle.textContent = 'Video reader';
       sideMetaSubtitle.textContent = '';
       hasArticleContent = false;
       setBusy(false, 'idle');
       syncSavedTabDefault(false);
       renderSavedTabState();
       renderCachedTranscriptList();
+      setReadingProgressValue(0);
     }
 
     function setSideTags(tags) {
@@ -2465,6 +4074,7 @@ function renderScript(): string {
 
     function renderSideDetails() {
       sideSummary.textContent = currentSourceSummary;
+      sideMetaSubtitle.textContent = '';
       setSideTags([currentSideModeTag]);
     }
 
@@ -2483,6 +4093,93 @@ function renderScript(): string {
       sideThumb.src = thumbnailUrl;
       sideThumb.alt = payload.sourceTitle ? payload.sourceTitle + ' 缩略图' : 'YouTube 缩略图';
       sideCover.classList.add('has-image');
+    }
+
+    function getArticleThumbnailUrl() {
+      return currentThumbnailUrl || (currentVideoId ? 'https://i.ytimg.com/vi/' + currentVideoId + '/hqdefault.jpg' : '');
+    }
+
+    function normalizeArticleMarkup(root) {
+      if (!root) {
+        return;
+      }
+
+      root.querySelectorAll('.article-media-card').forEach((node) => {
+        node.remove();
+      });
+
+      root.querySelectorAll('[data-article-cite]').forEach((node) => {
+        node.remove();
+      });
+
+      root.querySelectorAll('.qa').forEach((qa) => {
+        if (qa.querySelector(':scope > .qa-meta')) {
+          return;
+        }
+
+        const children = Array.from(qa.children);
+        const speaker = children.find((child) => child.classList && child.classList.contains('qa-speaker'));
+        const body = children.find((child) => child.classList && child.classList.contains('qa-body'));
+        const time = children.find((child) => child.classList && child.classList.contains('qa-time'));
+
+        if (!speaker || !body) {
+          return;
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'qa-meta';
+        meta.appendChild(speaker);
+        if (time) {
+          meta.appendChild(time);
+        }
+        qa.insertBefore(meta, body);
+      });
+    }
+
+    function syncArticleHero() {
+      normalizeArticleMarkup(article);
+
+      const articleHero = article.querySelector('[data-article-hero]');
+      const articleTitle = article.querySelector('[data-article-title]');
+      if (articleHero && articleTitle) {
+        while (articleHero.firstElementChild && articleHero.firstElementChild !== articleTitle) {
+          articleHero.firstElementChild.remove();
+        }
+      }
+
+      if (articleTitle) {
+        const displayTitle = currentTranslatedTitleZh || currentSourceTitle || articleTitle.textContent || '';
+        if (displayTitle) {
+          articleTitle.textContent = displayTitle;
+        }
+      }
+
+      const articleKicker = article.querySelector('[data-article-kicker]');
+      if (articleKicker && currentSummaryZh) {
+        articleKicker.textContent = currentSummaryZh;
+      }
+
+      const articleCite = article.querySelector('[data-article-cite]');
+      if (articleCite) {
+        articleCite.textContent = currentSourceAuthor ? ' - ' + currentSourceAuthor : '';
+      }
+
+      const articleThumb = article.querySelector('[data-article-thumb]');
+      if (articleThumb) {
+        const thumbnailUrl = getArticleThumbnailUrl();
+        if (thumbnailUrl) {
+          articleThumb.setAttribute('src', thumbnailUrl);
+          articleThumb.setAttribute('alt', (currentSourceTitle || 'YouTube 视频') + ' 缩略图');
+        } else {
+          articleThumb.removeAttribute('src');
+          articleThumb.setAttribute('alt', '');
+        }
+      }
+
+      const articleLink = article.querySelector('[data-article-link]');
+      if (articleLink && currentVideoId) {
+        articleLink.setAttribute('href', 'https://www.youtube.com/watch?v=' + currentVideoId);
+      }
     }
 
     function timestampToSeconds(label) {
@@ -2534,6 +4231,10 @@ function renderScript(): string {
     }
 
     function renderMeta(payload) {
+      if (payload && payload.readingMode) {
+        syncRenderedReadingMode(payload.readingMode);
+      }
+
       if (payload.statusText) {
         const mode =
           payload.stage === 'writing'
@@ -2542,6 +4243,38 @@ function renderScript(): string {
               ? 'done'
               : 'fetching';
         setStatus(payload.statusText, { busy: payload.stage !== 'complete', mode });
+
+        if (!hasArticleContent && payload.stage !== 'complete') {
+          const loadingTitle =
+            payload.stage === 'analyzing'
+              ? '正在分析内容'
+              : payload.stage === 'translating_dialogue'
+                ? '正在生成中文对话'
+                : payload.stage === 'summarizing_sections'
+                  ? '正在整理每段问答'
+                : payload.stage === 'writing'
+                  ? '正在写入结果'
+                  : '正在准备内容';
+          setArticleLoading(true, loadingTitle, payload.statusText);
+        }
+        if (payload.stage === 'complete') {
+          setArticleLoading(false);
+          setDialogueLoading(false);
+        } else if (payload.stage === 'translating_dialogue' || payload.stage === 'summarizing_sections') {
+          setDialogueLoading(true, payload.statusText);
+        }
+
+        if (payload.stage === 'analyzing' || payload.stage === 'translating_dialogue' || payload.stage === 'summarizing_sections') {
+          const hintTitle =
+            payload.stage === 'analyzing'
+              ? (currentRenderedReadingMode === 'quick' ? 'Gemini 正在智能分段' : 'Gemini 正在提炼内容')
+              : payload.stage === 'summarizing_sections'
+                ? 'Gemini 正在整理每段问答'
+                : 'Gemini 正在继续生成内容';
+          startLoadingHintCycle(payload.stage, hintTitle, payload.statusText);
+        } else {
+          stopLoadingHintCycle();
+        }
       }
 
       if (!payload.sourceTitle) {
@@ -2553,14 +4286,27 @@ function renderScript(): string {
         enhanceTimestampLinks(article);
       }
 
-      sideTitle.textContent = payload.sourceTitle;
+      if (typeof payload.translatedTitleZh === 'string' && payload.translatedTitleZh.trim()) {
+        currentTranslatedTitleZh = payload.translatedTitleZh.trim();
+      }
+      if (typeof payload.summaryZh === 'string' && payload.summaryZh.trim()) {
+        currentSummaryZh = payload.summaryZh.trim();
+      }
+
+      currentSourceTitle = payload.sourceTitle;
+      currentSourceAuthor = payload.sourceAuthor || '';
+      currentThumbnailUrl =
+        payload.thumbnailUrl ||
+        (payload.videoId ? 'https://i.ytimg.com/vi/' + payload.videoId + '/hqdefault.jpg' : '');
+
+      const displayTitle = currentTranslatedTitleZh || payload.sourceTitle;
+      sideTitle.textContent = displayTitle;
       setSideThumbnail(payload);
-      sideMetaTitle.textContent = payload.sourceAuthor || '';
-      sideMetaSubtitle.textContent = '';
+      sideMetaTitle.textContent = currentSourceAuthor;
       currentSideModeTag =
         typeof payload.readingModeLabel === 'string' && payload.readingModeLabel.trim()
           ? payload.readingModeLabel.trim()
-          : 'TRANSCRIPT';
+          : 'VIDEO';
       const detailParts = [];
       if (payload.sourceLanguage) {
         detailParts.push(payload.sourceLanguage);
@@ -2573,15 +4319,65 @@ function renderScript(): string {
       }
       currentSourceSummary = detailParts.join(' · ');
       renderSideDetails();
+      syncArticleHero();
+    }
+
+    function renderInsights(payload) {
+      const existingBlock = article.querySelector('[data-insights-block]');
+      if (existingBlock) {
+        existingBlock.remove();
+      }
+
+      if (typeof payload.titleTranslationZh === 'string' && payload.titleTranslationZh.trim()) {
+        currentTranslatedTitleZh = payload.titleTranslationZh.trim();
+      }
+      if (typeof payload.summaryZh === 'string' && payload.summaryZh.trim()) {
+        currentSummaryZh = payload.summaryZh.trim();
+      }
+      syncArticleHero();
+
+      const incomingWarning =
+        typeof payload.warning === 'string' && payload.warning.trim()
+          ? payload.warning.trim()
+          : '';
+      const hasStructuredInsights = Boolean(
+        (typeof payload.titleTranslationZh === 'string' && payload.titleTranslationZh.trim())
+        || (typeof payload.summaryZh === 'string' && payload.summaryZh.trim())
+        || (typeof payload.summary === 'string' && payload.summary.trim())
+        || (Array.isArray(payload.speakers) && payload.speakers.length),
+      );
+
+      if (incomingWarning && isGeminiHighDemandWarning(incomingWarning) && !hasStructuredInsights) {
+        stopLoadingHintCycle();
+        renderSideDetails();
+        setArticleLoading(true, 'Gemini 当前繁忙', 'AI 暂时不可用，正在自动回退为原始字幕。');
+        showToast('Gemini 当前繁忙', 'AI 结果暂时不可用，已自动回退为原始字幕。');
+      }
     }
 
     function appendHtml(html, target) {
       if (!html) return;
 
+      setArticleLoading(false);
       empty.classList.add('hidden');
       hasArticleContent = true;
-      article.insertAdjacentHTML('beforeend', html);
+      if (target === 'dialogue-loading') {
+        setDialogueLoading(false);
+        article.insertAdjacentHTML('beforeend', html);
+      } else if (target === 'dialogue') {
+        const loading = article.querySelector('[data-dialogue-loading]');
+        if (loading) {
+          loading.insertAdjacentHTML('beforebegin', html);
+        } else {
+          article.insertAdjacentHTML('beforeend', html);
+        }
+      } else {
+        article.insertAdjacentHTML('beforeend', html);
+      }
+      syncArticleHero();
       enhanceTimestampLinks(article);
+      updateReadingProgress();
+      applyLoadingHint();
     }
 
     function parseSseChunk(chunk) {
@@ -2638,6 +4434,9 @@ function renderScript(): string {
 
           if (parsed.event === 'meta') {
             renderMeta(payload);
+            if (payload.stage === 'complete') {
+              latestCompletionMeta = payload;
+            }
             if (payload.stage === 'cache_hit') {
               if (!suppressCacheHitToast) {
                 showToast('已读取本地缓存', '这个视频的字幕已存在于 localhost，本次优先使用本地缓存。');
@@ -2645,21 +4444,58 @@ function renderScript(): string {
               suppressCacheHitToast = false;
             }
             if (payload.stage === 'transcript_ready') {
-              setStatus('字幕已就绪，正在排版 transcript', { busy: true, mode: 'writing' });
+              setStatus('字幕已就绪，正在排版内容', { busy: true, mode: 'writing' });
+            } else if (payload.stage === 'analyzing') {
+              setStatus(
+                payload.readingMode === 'quick'
+                  ? 'Gemini 正在按内容结构进行分段'
+                  : 'Gemini 正在提炼高亮句与可能说话人',
+                { busy: true, mode: 'writing' },
+              );
+            } else if (payload.stage === 'summarizing_sections') {
+              setStatus('Gemini 正在整理每段的中心问题与答案', { busy: true, mode: 'writing' });
+            } else if (payload.stage === 'translating_dialogue') {
+              setStatus('正在继续生成内容', { busy: true, mode: 'writing' });
             } else if (payload.stage === 'preview_ready') {
-              setStatus('首批字幕已就绪，正在继续抓取完整 transcript', { busy: true, mode: 'fetching' });
+              setStatus('首批字幕已就绪，正在继续抓取完整内容', { busy: true, mode: 'fetching' });
             } else if (payload.stage === 'writing') {
-              setStatus('正在写入 transcript', { busy: true, mode: 'writing' });
+              setStatus('正在写入内容', { busy: true, mode: 'writing' });
             }
           } else if (parsed.event === 'html') {
             appendHtml(payload.html, payload.target);
           } else if (parsed.event === 'cache') {
             writeCachedTranscript(payload.bundle);
+          } else if (parsed.event === 'insights') {
+            renderInsights(payload);
+          } else if (parsed.event === 'warning') {
+            if (payload && payload.code === 'gemini_timeout' && payload.message) {
+              showToast('当前片段已跳过', payload.message);
+            }
           } else if (parsed.event === 'error') {
+            setArticleLoading(false);
+            setDialogueLoading(false);
+            stopLoadingHintCycle();
             setError(payload.message || '生成失败，请稍后重试。');
             setBusy(false, 'idle');
           } else if (parsed.event === 'done') {
+            setArticleLoading(false);
+            setDialogueLoading(false);
+            stopLoadingHintCycle();
             setStatus('', { busy: false, mode: 'done' });
+            if (
+              latestCompletionMeta &&
+              usesGeminiReadingFlow(latestCompletionMeta.readingMode) &&
+              latestCompletionMeta.geminiTranslationComplete === true &&
+              latestCompletionMeta.videoId &&
+              article.innerHTML.trim()
+            ) {
+              writeCachedTranslation(
+                latestCompletionMeta.videoId,
+                latestCompletionMeta.readingMode,
+                article.innerHTML,
+                latestCompletionMeta,
+              );
+            }
           }
 
           extracted = takeSseFrame(buffer);
@@ -2722,6 +4558,33 @@ function renderScript(): string {
       });
     });
 
+    if (readerTypeButton) {
+      readerTypeButton.addEventListener('click', () => {
+        const currentIndex = READER_TYPE_OPTIONS.findIndex((option) => option.value === activeReaderType);
+        const nextType = READER_TYPE_OPTIONS[(currentIndex + 1 + READER_TYPE_OPTIONS.length) % READER_TYPE_OPTIONS.length];
+        activeReaderType = nextType.value;
+        syncReaderTools();
+      });
+    }
+
+    if (readerThemeButton) {
+      readerThemeButton.addEventListener('click', () => {
+        const currentIndex = READER_THEME_OPTIONS.findIndex((option) => option.value === activeReaderTheme);
+        const nextTheme = READER_THEME_OPTIONS[(currentIndex + 1 + READER_THEME_OPTIONS.length) % READER_THEME_OPTIONS.length];
+        activeReaderTheme = nextTheme.value;
+        syncReaderTools();
+      });
+    }
+
+    if (readerLayoutButton) {
+      readerLayoutButton.addEventListener('click', () => {
+        const currentIndex = READER_LAYOUT_OPTIONS.findIndex((option) => option.value === activeReaderLayout);
+        const nextLayout = READER_LAYOUT_OPTIONS[(currentIndex + 1 + READER_LAYOUT_OPTIONS.length) % READER_LAYOUT_OPTIONS.length];
+        activeReaderLayout = nextLayout.value;
+        syncReaderTools();
+      });
+    }
+
     if (loginButton) {
       loginButton.addEventListener('click', () => {
         showToast('登录功能即将上线', '后续这里会接入账号登录与同步能力。');
@@ -2735,13 +4598,66 @@ function renderScript(): string {
       });
     }
 
+    customGeminiApiKey = readStoredGeminiApiKey();
+    updateGeminiKeyPreview();
+
     settingsItems.forEach((item) => {
       item.addEventListener('click', () => {
-        const label = item.getAttribute('data-settings-item') || '设置';
+        const action = item.getAttribute('data-settings-action') || '';
         setSettingsMenuOpen(false);
-        showToast(label, '这里将用于切换界面语言。');
+        if (action === 'language') {
+          showToast('语言(即将支持多语言)', '这里后续会提供界面语言切换。');
+          return;
+        }
+        if (action === 'gemini-key') {
+          configureCustomGeminiKey();
+          return;
+        }
+        const label = item.getAttribute('data-settings-item') || '设置';
+        showToast(label, '该设置项暂未接入。');
       });
     });
+
+    if (geminiKeySaveButton && geminiKeyInput) {
+      geminiKeySaveButton.addEventListener('click', () => {
+        persistCustomGeminiKey(geminiKeyInput.value);
+        closeGeminiKeyModal();
+      });
+    }
+
+    if (geminiKeyRemoveButton) {
+      geminiKeyRemoveButton.addEventListener('click', () => {
+        persistCustomGeminiKey('');
+        if (geminiKeyInput) {
+          geminiKeyInput.value = '';
+        }
+        closeGeminiKeyModal();
+      });
+    }
+
+    if (geminiKeyCancelButton) {
+      geminiKeyCancelButton.addEventListener('click', () => {
+        closeGeminiKeyModal();
+      });
+    }
+
+    if (geminiKeyInput) {
+      geminiKeyInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          persistCustomGeminiKey(geminiKeyInput.value);
+          closeGeminiKeyModal();
+        }
+      });
+    }
+
+    if (geminiKeyModal) {
+      geminiKeyModal.addEventListener('click', (event) => {
+        if (event.target === geminiKeyModal) {
+          closeGeminiKeyModal();
+        }
+      });
+    }
 
     document.addEventListener('click', (event) => {
       if (!settingsNavItem || !settingsMenu || settingsMenu.hidden) {
@@ -2757,24 +4673,41 @@ function renderScript(): string {
 
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
+        if (geminiKeyModal && !geminiKeyModal.hidden) {
+          closeGeminiKeyModal();
+          return;
+        }
         setSettingsMenuOpen(false);
       }
     });
 
     backButton.addEventListener('click', () => {
-      if (currentController) {
-        currentController.abort();
-        currentController = null;
-      }
+      cancelCurrentRequest();
       setLoading(false);
       setStatus('');
       setError('');
       showSearchView({ animateReturn: true });
     });
 
+    if (readingProgress) {
+      readingProgress.addEventListener('pointerdown', startReadingProgressDrag);
+      readingProgress.addEventListener('pointermove', handleReadingProgressDrag);
+      readingProgress.addEventListener('pointerup', (event) => endReadingProgressDrag(event.pointerId));
+      readingProgress.addEventListener('pointercancel', (event) => endReadingProgressDrag(event.pointerId));
+      readingProgress.addEventListener('lostpointercapture', () => endReadingProgressDrag());
+    }
+
+    if (articleWrap) {
+      articleWrap.addEventListener('scroll', updateReadingProgress, { passive: true });
+    }
+
+    window.addEventListener('resize', updateReadingProgress);
+
     syncSavedTabDefault(true);
     renderSavedTabState();
     renderCachedTranscriptList();
+    syncRenderedReadingMode(activeReadingMode);
+    syncReaderTools();
     setActiveReadingMode(activeReadingMode);
     syncInputMirror();
     resetArticle();
@@ -2788,11 +4721,11 @@ export function renderAppPage(): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>YouTube Transcript Viewer</title>
+    <title>YouTube Video Reader</title>
     <link rel="icon" href="${BRAND_ICON_DATA_URI}" />
     <meta
       name="description"
-      content="输入一个带字幕的 YouTube 链接，抓取并阅读视频的原始 transcript。"
+      content="输入一个带字幕的 YouTube 链接，抓取并阅读视频的原始字幕。"
     />
     <style>${renderStyles()}</style>
   </head>
@@ -2802,11 +4735,37 @@ export function renderAppPage(): string {
         <div class="toast-title" data-toast-title></div>
         <div class="toast-body" data-toast-body></div>
       </div>
-      <div class="shell">
-        <header class="topbar">
+      <div class="settings-modal" data-gemini-key-modal hidden>
+        <div class="settings-modal-card" role="dialog" aria-modal="true" aria-labelledby="gemini-key-modal-title">
+          <div class="settings-modal-head">
+            <h2 class="settings-modal-title" id="gemini-key-modal-title">使用你自己的 Gemini key</h2>
+            <p class="settings-modal-copy">你的 key 只会保存在当前浏览器本地。</p>
+          </div>
+          <div class="settings-modal-form">
+            <input
+              class="settings-modal-input"
+              data-gemini-key-input
+              type="password"
+              inputmode="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="请输入 Gemini key"
+            />
+            <div class="settings-modal-footnote">保存后会在设置菜单中显示为掩码形式，例如 s2*****as34。</div>
+            <div class="settings-modal-actions">
+              <button type="button" class="settings-modal-button" data-gemini-key-cancel>取消</button>
+              <button type="button" class="settings-modal-button" data-gemini-key-remove>移除</button>
+              <button type="button" class="settings-modal-button primary" data-gemini-key-save>保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="shell" data-reader-layout="standard">
+        <header class="topbar" data-topbar data-view="search">
           <div class="brand">
             <img class="brand-mark" src="${BRAND_ICON_DATA_URI}" alt="" aria-hidden="true" />
-            <span class="brand-copy">让视频字幕清晰可读</span>
+            <span class="brand-copy">让视频内容跃然纸上</span>
           </div>
           <nav class="topnav" aria-label="Primary">
             <button type="button" class="topnav-button" data-login-button>
@@ -2840,13 +4799,33 @@ export function renderAppPage(): string {
                 <span>设置</span>
               </button>
               <div class="settings-menu" data-settings-menu role="menu" hidden>
-                <button type="button" class="settings-menu-item" data-settings-item="语言" role="menuitem">语言</button>
+                <button
+                  type="button"
+                  class="settings-menu-item"
+                  data-settings-item="语言"
+                  data-settings-action="language"
+                  role="menuitem"
+                >
+                  <span class="settings-menu-title">语言</span>
+                </button>
+                <button
+                  type="button"
+                  class="settings-menu-item"
+                  data-settings-item="使用你自己的Gemini key"
+                  data-settings-action="gemini-key"
+                  role="menuitem"
+                >
+                  <span class="settings-menu-copy">
+                    <span class="settings-menu-title">使用你自己的Gemini key</span>
+                    <span class="settings-menu-meta" data-gemini-key-preview>未设置</span>
+                  </span>
+                </button>
               </div>
             </div>
           </nav>
         </header>
 
-        <div class="app-body" data-app-body data-view="search">
+        <div class="app-body" data-app-body data-view="search" data-reading-mode="${DEFAULT_READING_MODE}">
           <aside class="sidebar-stack">
             <div class="saved-tabs" aria-label="Saved material filters">
               <button type="button" class="saved-tab active" data-saved-tab="recent">最近浏览</button>
@@ -2859,14 +4838,14 @@ export function renderAppPage(): string {
                   <img data-side-thumb loading="lazy" referrerpolicy="no-referrer" />
                   <div class="story-cover-scrim"></div>
                   <div class="story-tags" data-side-tags>
-                    <span class="story-tag">TRANSCRIPT</span>
+                    <span class="story-tag">VIDEO</span>
                   </div>
                   <div class="story-content">
-                    <h2 class="story-title" data-side-title>Open a YouTube transcript</h2>
+                    <h2 class="story-title" data-side-title>Open a YouTube video</h2>
                     <p class="story-summary" data-side-summary></p>
                     <div class="story-meta">
                       <div class="story-meta-text">
-                        <p class="story-meta-title" data-side-meta-title>Transcript viewer</p>
+                        <p class="story-meta-title" data-side-meta-title>Video reader</p>
                         <p class="story-meta-subtitle" data-side-meta-subtitle></p>
                       </div>
                     </div>
@@ -2877,13 +4856,13 @@ export function renderAppPage(): string {
               <section class="cache-card">
                 <div class="cache-list" data-cache-list>
                   <div class="cache-item has-image">
-                    <div class="cache-thumb" data-label="TRANSCRIPT"><img src="https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg" alt="Oceanic Currents and the Future of Energy 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
+                    <div class="cache-thumb" data-label="VIDEO"><img src="https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg" alt="Oceanic Currents and the Future of Energy 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
                     <div class="cache-body">
                       <p class="cache-item-title">Oceanic Currents and the Future of Energy</p>
                     </div>
                   </div>
                   <div class="cache-item has-image">
-                    <div class="cache-thumb" data-label="TRANSCRIPT"><img src="https://i.ytimg.com/vi/pJY0mBWHPw4/hqdefault.jpg" alt="Sustainable Architecture in Coastal Areas 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
+                    <div class="cache-thumb" data-label="VIDEO"><img src="https://i.ytimg.com/vi/pJY0mBWHPw4/hqdefault.jpg" alt="Sustainable Architecture in Coastal Areas 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
                     <div class="cache-body">
                       <p class="cache-item-title">Sustainable Architecture in Coastal Areas</p>
                     </div>
@@ -2906,7 +4885,7 @@ export function renderAppPage(): string {
                       <span class="hero-title-dot"></span>
                     </div>
                   </div>
-                  <p class="hero-subtitle">直接阅读视频的原始字幕</p>
+                  <p class="hero-subtitle">让视频内容跃然纸上</p>
                 </div>
 
                 <div class="composer">
@@ -2920,7 +4899,7 @@ export function renderAppPage(): string {
                           type="url"
                           required
                           value="${SAMPLE_URL}"
-                          placeholder="在这里粘贴 YouTube 视频链接，抓取原始 transcript。"
+                          placeholder="在这里粘贴 YouTube 视频链接，抓取原始字幕。"
                         />
                         <div class="input-mirror" data-input-mirror>${SAMPLE_URL}</div>
                       </div>
@@ -2931,11 +4910,7 @@ export function renderAppPage(): string {
                         <span class="topic-pill">科学</span>
                         <span class="topic-pill">历史</span>
                       </div>
-                      <div class="hero-tools" data-mode-toggle data-mode="quick" data-search-animate style="--search-delay: 270ms;">
-                        <span class="mode-slider" aria-hidden="true"></span>
-                        <button type="button" class="mode-pill active" data-mode-submit="quick">速读版</button>
-                        <button type="button" class="mode-pill" data-mode-submit="full">详细版</button>
-                      </div>
+                      ${renderReadingModeToggle()}
                       <div class="generate-row" data-search-animate style="--search-delay: 360ms;">
                         <button type="submit" data-submit>开始阅读字幕</button>
                       </div>
@@ -2959,16 +4934,75 @@ export function renderAppPage(): string {
             </section>
           </section>
 
-          <section class="article-wrap" data-article-wrap>
-            <div class="article-back-rail">
-              <div class="article-topbar">
-                <button type="button" class="article-back" data-back-button>← Back to Search</button>
+          <section class="article-wrap" data-article-wrap data-reading-mode="${DEFAULT_READING_MODE}">
+            <div class="reader-shell" data-reading-mode="${DEFAULT_READING_MODE}">
+              <aside class="reader-tooldeck" data-reader-tooldeck aria-label="Reader tools">
+                <div class="reader-tooldeck-card">
+                  <button type="button" class="reader-tool-button" data-reader-type-button aria-label="Adjust text size">
+                    <span class="reader-tool-glyph text" aria-hidden="true">Aa</span>
+                  </button>
+                  <button type="button" class="reader-tool-button" data-reader-theme-button aria-label="Change reader theme">
+                    <span class="reader-tool-glyph" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2.5v2.5"></path>
+                        <path d="M12 19v2.5"></path>
+                        <path d="M4.93 4.93l1.77 1.77"></path>
+                        <path d="M17.3 17.3l1.77 1.77"></path>
+                        <path d="M2.5 12H5"></path>
+                        <path d="M19 12h2.5"></path>
+                        <path d="M4.93 19.07l1.77-1.77"></path>
+                        <path d="M17.3 6.7l1.77-1.77"></path>
+                      </svg>
+                    </span>
+                    <span class="reader-tool-label" data-reader-theme-label>主题</span>
+                  </button>
+                  <button type="button" class="reader-tool-button" data-reader-layout-button aria-label="Toggle reading width">
+                    <span class="reader-tool-glyph" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M4.5 6.5c1.8-1 3.8-1.5 6-1.5 2.1 0 4 .4 5.8 1.3 1.1.5 2.2.7 3.2.7v11.5c-1.1 0-2.2-.2-3.2-.7-1.8-.9-3.8-1.3-5.8-1.3-2.2 0-4.2.5-6 1.5Z"></path>
+                        <path d="M10.5 5v11.5"></path>
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              </aside>
+              <div class="article-loading hidden" data-article-loading>
+                <div class="article-loading-head">
+                  <span class="article-loading-pulse" aria-hidden="true"></span>
+                  <p class="article-loading-title" data-article-loading-title>正在准备内容</p>
+                </div>
+                <p class="article-loading-body" data-article-loading-body>我们正在生成您需要的内容并组织内容，请稍等片刻。</p>
+                <div class="article-loading-lines" aria-hidden="true">
+                  <div class="article-loading-line"></div>
+                  <div class="article-loading-line"></div>
+                  <div class="article-loading-line"></div>
+                  <div class="article-loading-line"></div>
+                </div>
+              </div>
+              <article class="article" data-article data-reading-mode="${DEFAULT_READING_MODE}">${renderShowcaseArticle()}</article>
+              <div class="empty hidden" data-empty>
+                Content will appear here.
               </div>
             </div>
-            <div class="reader-shell">
-              <article class="article" data-article>${renderShowcaseArticle()}</article>
-              <div class="empty hidden" data-empty>
-                Transcript will appear here.
+            <div class="reading-topbar" data-reading-topbar aria-label="Article navigation">
+              <button type="button" class="reading-back" data-back-button>
+                <svg class="reading-back-icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M10.5 3.5 6 8l4.5 4.5"></path>
+                </svg>
+                <span>回到主页</span>
+              </button>
+              <div
+                class="reading-progress"
+                data-reading-progress
+                role="progressbar"
+                aria-label="Reading progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="reading-progress-fill"></span>
+                <span class="reading-progress-dot" aria-hidden="true"></span>
               </div>
             </div>
           </section>
