@@ -1,9 +1,9 @@
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 const READING_MODE_OPTIONS = [
-  { value: 'quick', label: '速读版' },
-  { value: 'full', label: '详细版' },
+  { value: 'quick', label: '速读版', note: '（即将上线）', disabled: true },
+  { value: 'full', label: '详细版', note: '', disabled: false },
 ] as const;
-const DEFAULT_READING_MODE = READING_MODE_OPTIONS[0]?.value ?? 'quick';
+const DEFAULT_READING_MODE = READING_MODE_OPTIONS.find((option) => !option.disabled)?.value ?? 'full';
 const BRAND_ICON_BASE64 = [
   'iVBORw0KGgoAAAANSUhEUgAAAVgAAAEQCAYAAAD1Z2xBAAAKsWlDQ1BJQ0MgUHJvZmlsZQAASImVlwk4lHsXwP/v+86+2AYhy9i3yBIGWcbYxp6dNmNmMJYxDaOSNkmFm5IklEvdkKLbgtwWadF2hUp7l6RS3a4WqVS+F4/Rvd/zfd/znef5z/k9Z87//M85z/t/n/MCQFXniETJsBwAKcJ0cbCXGz0yKpqOfwkQQAaywBbocLhpImZQkB9AZVr/XT72AmhC3zSbiPXv//9Xkefx07gAQEEox/LSuCkoH0fXR65InA4Acgi16y5PF01wF8qKYjRBlJ9OcPwUf5rg2EnGUCZ9QoNZKNMBIFA4HHE8AJQ5qJ2ewY1H41AmarAQ8gRClLNQdk5JSeWhfAplI9RHhPJEfEbsD3Hi/xYzVhqTw4mX8lQtk0JwF6SJkjkr/892/G9JSZZMn2GILkqC2DsY1Qpoz54mpfpKWRgbEDjNAt6k/yQn',
   'SLzDppmbxoqe5rTkEPY08zjuvtI4yQF+0xwn8JT6CNLZodPMT/MImWZxarD03DgxiznNHPFMDpKkMKk9gc+Wxs9MCI2Y5gxBeIA0t6QQ3xkfltQulgRLa+ELvdxmzvWU9iEl7YfaBWzp3vSEUG9pHzgz+fOFzJmYaZHS3Hh8d48ZnzCpvyjdTXqWKDlI6s9P9pLa0zJCpHvT0YdzZm+QtIeJHJ+gaQYsYA2sQDgIA3QQBIIB2tF0/or0iUJYqaKVYkF8Qjqdid42Pp0t5JrPoVtZWNkCMHF3px6N968m7yQkv2TGtu0sAG6pqHHzjM1lAwCNqJbVmrEZFAMgsx2A9o1ciThjyoaZ+MECEvpOUASqQBPoAiNghuZoCxyBK/AAPmiOoSAKLAFckABSgBgsB1lgPcgF+WAb2AnKQCXYB2rBYXAUNINT4By4BK6BLnAbPAB9YBC8AsPgIxiDIAgPUSEapAppQfqQKWQFMSBnyAPyg4KhKCgG',
@@ -287,11 +287,16 @@ function renderShowcaseArticle(): string {
 }
 
 function renderReadingModeToggle(): string {
+  const defaultReadingModeIndex = Math.max(
+    0,
+    READING_MODE_OPTIONS.findIndex((option) => option.value === DEFAULT_READING_MODE),
+  );
+
   return [
-    `<div class="hero-tools" data-mode-toggle data-mode="${DEFAULT_READING_MODE}" data-search-animate style="--search-delay: 270ms; --mode-count: ${READING_MODE_OPTIONS.length}; --mode-index: 0;">`,
+    `<div class="hero-tools" data-mode-toggle data-mode="${DEFAULT_READING_MODE}" data-search-animate style="--search-delay: 270ms; --mode-count: ${READING_MODE_OPTIONS.length}; --mode-index: ${defaultReadingModeIndex};">`,
     '<span class="mode-slider" aria-hidden="true"></span>',
-    ...READING_MODE_OPTIONS.map((option, index) => (
-      `<button type="button" class="mode-pill${index === 0 ? ' active' : ''}" data-mode-submit="${option.value}">${option.label}</button>`
+    ...READING_MODE_OPTIONS.map((option) => (
+      `<button type="button" class="mode-pill${option.value === DEFAULT_READING_MODE ? ' active' : ''}" data-mode-submit="${option.value}"${option.disabled ? ' disabled aria-disabled="true"' : ''}>${option.label}${option.note ?? ''}</button>`
     )),
     '</div>',
   ].join('');
@@ -843,6 +848,10 @@ function renderStyles(): string {
     .saved-tab:disabled {
       opacity: 1;
       cursor: default;
+    }
+
+    .mode-pill:disabled {
+      color: rgba(107, 114, 128, 0.58);
     }
 
     .saved-tabs {
@@ -2037,28 +2046,30 @@ function renderStyles(): string {
     }
 
     .article .section-theme-block {
-      margin: 56px 0 22px;
-      padding: 22px 24px;
-      border-radius: 22px;
-      background: linear-gradient(135deg, rgba(255, 248, 238, 0.96), rgba(248, 239, 226, 0.92));
-      border: 1px solid rgba(33, 24, 17, 0.08);
-      box-shadow: 0 16px 36px rgba(77, 58, 38, 0.06);
+      margin: 56px 0 18px;
     }
 
     .article .section-theme-title {
       margin: 0;
-      font-size: clamp(24px, 3vw, 30px);
-      line-height: 1.24;
+      font-size: clamp(22px, 2.8vw, 28px);
+      line-height: 1.45;
       letter-spacing: -0.02em;
     }
 
+    .article .section-theme-title-text {
+      color: var(--text);
+    }
+
+    .article .section-theme-divider {
+      color: var(--text);
+    }
+
     .article .section-theme-summary {
-      margin: 12px 0 0;
-      font-family: var(--sans);
-      font-size: calc(15px * var(--reader-copy-scale));
-      line-height: 1.7;
-      color: var(--muted-strong);
-      opacity: 0.92;
+      display: inline;
+      font: inherit;
+      letter-spacing: inherit;
+      color: inherit;
+      opacity: 1;
     }
 
     .article .dialogue-subtopic-block {
@@ -2215,11 +2226,16 @@ function renderStyles(): string {
     }
 
     .article .qa-speaker {
+      display: inline-flex;
+      width: max-content;
       color: #44403b;
       font-weight: 700;
       font-family: var(--sans);
       letter-spacing: 0.01em;
       padding-top: 0;
+      text-decoration-line: underline;
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.14em;
     }
 
     .article .qa-body {
@@ -2927,6 +2943,9 @@ function renderScript(): string {
     const appBody = document.querySelector('[data-app-body]');
     const button = document.querySelector('[data-submit]');
     const modeButtons = Array.from(document.querySelectorAll('[data-mode-submit]'));
+    const lockedReadingModes = new Set(
+      READING_MODE_OPTIONS.filter((option) => option.disabled).map((option) => option.value),
+    );
     const modeToggle = document.querySelector('[data-mode-toggle]');
     const statusRow = document.querySelector('[data-status-row]');
     const status = document.querySelector('[data-status]');
@@ -3272,6 +3291,21 @@ function renderScript(): string {
       return hints[index % hints.length];
     }
 
+    function applyDialogueLoadingHintToBlock(block, hint, fallbackTitle, fallbackBody) {
+      if (!block) {
+        return;
+      }
+
+      const title = block.querySelector('.dialogue-loading-title');
+      const copy = block.querySelector('.dialogue-loading-copy');
+      if (title) {
+        title.textContent = hint?.title || fallbackTitle || '正在继续生成内容';
+      }
+      if (copy) {
+        copy.textContent = hint?.body || fallbackBody || '努力生成高质量的剩余内容中，请稍等。。。';
+      }
+    }
+
     function applyLoadingHint() {
       const hint = getLoadingHintEntry(loadingHintStage, loadingHintIndex);
       if (!hint) {
@@ -3289,19 +3323,40 @@ function renderScript(): string {
 
       const existing = article.querySelector('[data-dialogue-loading]');
       if (existing) {
-        const title = existing.querySelector('.dialogue-loading-title');
-        const copy = existing.querySelector('.dialogue-loading-copy');
-        if (title) {
-          title.textContent = hint.title || loadingHintFallbackTitle || '正在继续生成内容';
-        }
-        if (copy) {
-          copy.textContent = hint.body || loadingHintFallbackBody || '努力生成高质量的剩余内容中，请稍等。。。';
-        }
+        applyDialogueLoadingHintToBlock(
+          existing,
+          hint,
+          loadingHintFallbackTitle,
+          loadingHintFallbackBody,
+        );
       }
 
-      if (hint.status) {
-        setStatus(hint.status, { busy: true, mode: 'writing' });
+      const sectionLoadingBlocks = article.querySelectorAll('.dialogue-section-block .dialogue-loading-block');
+      sectionLoadingBlocks.forEach((block, index) => {
+        const sectionHint = getLoadingHintEntry(loadingHintStage, loadingHintIndex + index + 1) || hint;
+        applyDialogueLoadingHintToBlock(
+          block,
+          sectionHint,
+          loadingHintFallbackTitle || 'Gemini 正在继续生成内容',
+          loadingHintFallbackBody,
+        );
+      });
+    }
+
+    function refreshSectionLoadingHints() {
+      if (!loadingHintStage) {
+        return;
       }
+
+      applyLoadingHint();
+    }
+
+    function applyLoadingHintStatus(hint) {
+      if (!hint?.status) {
+        return;
+      }
+
+      setStatus(hint.status, { busy: true, mode: 'writing' });
     }
 
     function stopLoadingHintCycle() {
@@ -3333,6 +3388,7 @@ function renderScript(): string {
       }
 
       applyLoadingHint();
+      applyLoadingHintStatus(getLoadingHintEntry(loadingHintStage, loadingHintIndex));
 
       if (loadingHintTimer && !stageChanged) {
         return;
@@ -3351,6 +3407,7 @@ function renderScript(): string {
 
         loadingHintIndex = (loadingHintIndex + 1) % currentHints.length;
         applyLoadingHint();
+        applyLoadingHintStatus(getLoadingHintEntry(loadingHintStage, loadingHintIndex));
       }, GEMINI_LOADING_HINT_INTERVAL_MS);
     }
 
@@ -3364,15 +3421,13 @@ function renderScript(): string {
       }
 
       if (existing) {
-        const title = existing.querySelector('.dialogue-loading-title');
-        const copy = existing.querySelector('.dialogue-loading-copy');
-        if (title) {
-          title.textContent = '正在继续生成内容';
-        }
-        if (copy) {
-          copy.textContent = body || '努力生成高质量的剩余内容中，请稍等。。。';
-        }
-        applyLoadingHint();
+        applyDialogueLoadingHintToBlock(
+          existing,
+          null,
+          '正在继续生成内容',
+          body || '努力生成高质量的剩余内容中，请稍等。。。',
+        );
+        refreshSectionLoadingHints();
       }
     }
 
@@ -3959,7 +4014,8 @@ function renderScript(): string {
     function setLoading(loading) {
       button.disabled = loading || !input.value.trim();
       modeButtons.forEach((modeButton) => {
-        modeButton.disabled = loading;
+        const modeValue = modeButton.getAttribute('data-mode-submit') || DEFAULT_READING_MODE;
+        modeButton.disabled = loading || lockedReadingModes.has(modeValue);
       });
       button.textContent = loading ? '抓取中...' : '开始阅读字幕';
       if (!loading) {
@@ -4531,7 +4587,7 @@ function renderScript(): string {
       syncArticleHero();
       enhanceTimestampLinks(article);
       updateReadingProgress();
-      applyLoadingHint();
+      refreshSectionLoadingHints();
     }
 
     function parseSseChunk(chunk) {
@@ -4724,7 +4780,7 @@ function renderScript(): string {
 
     modeButtons.forEach((modeButton) => {
       modeButton.addEventListener('click', () => {
-        setActiveReadingMode(modeButton.getAttribute('data-mode-submit') || 'quick');
+        setActiveReadingMode(modeButton.getAttribute('data-mode-submit') || DEFAULT_READING_MODE);
       });
     });
 

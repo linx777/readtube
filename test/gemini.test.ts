@@ -562,10 +562,16 @@ describe('translateTranscriptSectionToZh', () => {
       expect(requestPrompt).toContain('These rules must generalize across interviews, podcasts, lectures, explainers, tutorials, news reports, documentaries, monologues, vlogs, speeches, and mixed-format videos.');
       expect(requestPrompt).toContain('Return topicTitleZh as a concise higher-level Simplified Chinese heading');
       expect(requestPrompt).toContain('Return topicSummaryZh as one concise natural Simplified Chinese summary sentence');
-      expect(requestPrompt).toContain('Keep topicTitleZh under 10 words.');
-      expect(requestPrompt).toContain('Keep topicSummaryZh under 10 words.');
+      expect(requestPrompt).toContain('Keep topicTitleZh to exactly 4 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep topicSummaryZh under 15 Chinese characters when possible.');
       expect(requestPrompt).toContain('Also return groups for the smaller exchanges inside this larger section.');
-      expect(requestPrompt).toContain('Each item in groups must represent one main question-answer pair');
+      expect(requestPrompt).toContain('Each item in groups must represent exactly one main question and exactly one answer pair.');
+      expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
+      expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
+      expect(requestPrompt).toContain('If only an answer is present, generate a corresponding question.');
+      expect(requestPrompt).toContain('If only a question is present, remove it.');
+      expect(requestPrompt).toContain('If, after processing, a topic/group still does not contain exactly one question and one answer, discard that topic/group entirely.');
+      expect(requestPrompt).toContain('FINAL CHECK BEFORE RETURNING: delete any group that does not end with exactly one question and exactly one answer.');
       expect(requestPrompt).toContain('Every translated turn must appear in exactly one group.');
       expect(requestPrompt).toContain('capture the broader theme, stance, tension, or takeaway');
     } finally {
@@ -824,9 +830,14 @@ describe('summarizeQuickTranscriptSection', () => {
       expect(requestPrompt).toContain('Return topicTitleZh as a concise higher-level Simplified Chinese heading');
       expect(requestPrompt).toContain('Make topicTitleZh work for any video type');
       expect(requestPrompt).toContain('Return topicSummaryZh as one concise Simplified Chinese summary sentence');
-      expect(requestPrompt).toContain('Keep topicTitleZh under 10 words.');
-      expect(requestPrompt).toContain('Keep topicSummaryZh under 10 words.');
+      expect(requestPrompt).toContain('Keep topicTitleZh to exactly 4 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep topicSummaryZh under 15 Chinese characters when possible.');
       expect(requestPrompt).toContain('instead of merely restating the question literally');
+      expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
+      expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
+      expect(requestPrompt).toContain('If only an answer is present, generate a corresponding question.');
+      expect(requestPrompt).toContain('If only a question is present, remove it.');
+      expect(requestPrompt).toContain('FINAL CHECK BEFORE RETURNING: delete the section result if it does not end with exactly one question and exactly one answer.');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -924,7 +935,8 @@ describe('generateTranscriptSections', () => {
       expect(requestPrompt).toContain('Use the same heading logic for all video types');
       expect(requestPrompt).toContain('instead of merely repeating the literal wording of one question line');
       expect(requestPrompt).toContain('Write all section summaries in natural Simplified Chinese');
-      expect(requestPrompt).toContain('Keep each subtitle and each summary under 10 words when possible.');
+      expect(requestPrompt).toContain('Make each subtitle exactly 4 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Each summary should be a single short sentence that captures the broader point of the section and stays under 15 Chinese characters when possible.');
       expect(requestPrompt).toContain('titleTranslationZh');
       expect(requestPrompt).toContain('summaryZh');
       expect(requestPrompt).toContain('summary');
@@ -1016,7 +1028,12 @@ describe('generateTranscriptSectionBoundaries', () => {
       expect(requestPrompt).toContain('Keep section subtitles short, scannable, and thematic.');
       expect(requestPrompt).toContain('Use the same heading logic for all video types');
       expect(requestPrompt).toContain('instead of merely restating one question line');
-      expect(requestPrompt).toContain('Keep each subtitle and each summary under 10 words when possible.');
+      expect(requestPrompt).toContain('Make each subtitle exactly 4 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep each summary under 15 Chinese characters when possible.');
+      expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
+      expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
+      expect(requestPrompt).toContain('If only an answer is present, generate a corresponding question.');
+      expect(requestPrompt).toContain('If only a question is present, remove it.');
       expect(requestPrompt).toContain('Full Transcript:');
     } finally {
       globalThis.fetch = originalFetch;

@@ -91,7 +91,7 @@ const QUICK_TRANSCRIPT_SECTIONS_SCHEMA = {
     sections: {
       type: 'array',
       description:
-        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a higher-level Simplified Chinese thematic subtitle suitable as a quick-summary heading, and a concise Simplified Chinese summary.',
+        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese thematic subtitle suitable as a quick-summary heading, and a concise Simplified Chinese summary under 15 Chinese characters when possible.',
       minItems: 1,
       maxItems: 12,
       items: {
@@ -115,7 +115,7 @@ const FULL_TRANSCRIPT_SECTION_BOUNDARIES_SCHEMA = {
     sections: {
       type: 'array',
       description:
-        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, subtitle, and summary.',
+        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese subtitle, and a concise Simplified Chinese summary under 15 Chinese characters when possible.',
       minItems: 2,
       maxItems: 12,
       items: {
@@ -139,12 +139,12 @@ const TRANSCRIPT_DIALOGUE_SCHEMA = {
     topicTitleZh: {
       type: 'string',
       description:
-        'A higher-level thematic Simplified Chinese heading for the section, suitable as a quick-summary title before the dialogue.',
+        'A higher-level thematic Simplified Chinese heading for the section, suitable as a quick-summary title before the dialogue. Prefer a compact four-character-style heading when possible.',
     },
     topicSummaryZh: {
       type: 'string',
       description:
-        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the section.',
+        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the section and stays under 15 Chinese characters when possible.',
     },
     turns: {
       type: 'array',
@@ -202,12 +202,12 @@ const QUICK_SECTION_QA_SCHEMA = {
     topicTitleZh: {
       type: 'string',
       description:
-        'A higher-level thematic Simplified Chinese heading for this exchange, suitable as a quick-summary title before the question and answer.',
+        'A higher-level thematic Simplified Chinese heading for this exchange, suitable as a quick-summary title before the question and answer. Prefer a compact four-character-style heading when possible.',
     },
     topicSummaryZh: {
       type: 'string',
       description:
-        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the exchange.',
+        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the exchange and stays under 15 Chinese characters when possible.',
     },
     question: { type: 'string' },
     answer: { type: 'string' },
@@ -466,7 +466,8 @@ function buildBaseTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     '6. Prefer section subtitles that capture the broader topic, tension, or takeaway instead of merely restating one question line.',
     '7. Never assume the content is a Q&A unless the transcript actually supports that structure.',
     '8. Keep section summaries concise and factual.',
-    '9. Keep each subtitle and each summary under 10 words when possible.',
+    '9. Make each section subtitle exactly 4 Chinese characters when possible.',
+    '10. Keep each section summary under 15 Chinese characters when possible.',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,
     `Author: ${bundle.sourceAuthor}`,
@@ -517,6 +518,7 @@ function buildQuickTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     '8. Do not merge unrelated Q&A themes into the same section just because they are adjacent.',
     '9. If the content is not a conversation, segment by content structure instead: topic shifts, claims, examples, argument turns, or chapter-like transitions.',
     '10. When in doubt, prefer semantic content sections over arbitrary equal-sized chunks.',
+    ...EXACTLY_ONE_QA_RULES,
     '',
     'Section tasks:',
     '1. Return 1 to 12 contiguous sections for the full transcript in chronological order.',
@@ -527,14 +529,14 @@ function buildQuickTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     '6. Do not overlap sections. Cover the whole transcript in order.',
     '7. Make each section correspond to one coherent topic, question group, answer cluster, or content turn.',
     '8. Write all section subtitles in natural Simplified Chinese and keep them short, scannable, and thematic.',
-    '9. Each subtitle should work as a higher-level quick-summary heading for the exchange or topic block.',
-    '10. Prefer subtitles that synthesize the broader theme, stance, tension, or takeaway instead of merely repeating the literal wording of one question line.',
-    '11. Avoid generic labels such as "提问", "回答", "继续讨论", and avoid copying transcript lines verbatim unless there is no better abstraction.',
-    '12. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
-    '13. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
-    '14. Write all section summaries in natural Simplified Chinese. Keep them very concise and factual.',
-    '15. Each summary should be a single short sentence that captures the broader point of the section, ideally under 20 Chinese characters when possible.',
-    '16. Keep each subtitle and each summary under 10 words when possible.',
+    '9. Make each subtitle exactly 4 Chinese characters when possible.',
+    '10. Each subtitle should work as a higher-level quick-summary heading for the exchange or topic block.',
+    '11. Prefer subtitles that synthesize the broader theme, stance, tension, or takeaway instead of merely repeating the literal wording of one question line.',
+    '12. Avoid generic labels such as "提问", "回答", "继续讨论", and avoid copying transcript lines verbatim unless there is no better abstraction.',
+    '13. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
+    '14. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
+    '15. Write all section summaries in natural Simplified Chinese. Keep them very concise and factual.',
+    '16. Each summary should be a single short sentence that captures the broader point of the section and stays under 15 Chinese characters when possible.',
     '17. Do not return transcript text.',
     '18. Must Do not split a question into one group and its answer into another',
     '',
@@ -547,6 +549,15 @@ function buildQuickTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     transcriptBody,
   ].join('\n');
 }
+
+const EXACTLY_ONE_QA_RULES = [
+  '- HARD REQUIREMENT FOR EVERY TOPIC/ Q&A GROUP: Each topic MUST contain exactly one question and exactly one answer.',
+  '- NO EXCEPTIONS: no more, no less.',
+  '- If only an answer is present, generate a corresponding question.',
+  '- If only a question is present, remove this topic and question',
+  '- HARD REQUIREMENT FOR multiple questions or multiple answers appear, combine all awnser together and generate a enerate a corresponding question. so the final topic/group still has exactly one question and exactly one answer.',
+  '- If, after processing, a topic/group still does not contain exactly one question and one answer, just remove this topic and content in the reponse',
+];
 
 function buildFullTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
   return buildBaseTranscriptSectionsPrompt(bundle);
@@ -568,6 +579,7 @@ function buildFullTranscriptSectionBoundariesPrompt(bundle: TranscriptBundle): s
     '5. If the content is not a conversation, segment by content structure instead: topic shifts, claims, examples, argument turns, or chapter-like transitions.',
     '6. When in doubt, prefer semantic content sections over arbitrary equal-sized chunks.',
     '7. Must Do not split a question into one group and its answer into another',
+    ...EXACTLY_ONE_QA_RULES,
     '',
     'Tasks:',
     '1. Return 2 to 12 contiguous sections for the full transcript in chronological order.',
@@ -578,12 +590,13 @@ function buildFullTranscriptSectionBoundariesPrompt(bundle: TranscriptBundle): s
     '6. Cover the whole transcript in order without overlap or gaps.',
     '7. Return only timestamp boundaries, subtitles, and summaries. Do not return transcript text.',
     '8. Keep section subtitles short, scannable, and thematic.',
-    '9. Prefer subtitles that capture the broader topic, tension, stance, or takeaway instead of merely restating one question line.',
-    '10. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
-    '11. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
-    '12. Keep section summaries concise and factual.',
-    '13. Keep each subtitle and each summary under 10 words when possible.',
-    '14. Must Do not split a question into one group and its answer into another',
+    '9. Make each subtitle exactly 4 Chinese characters when possible.',
+    '10. Prefer subtitles that capture the broader topic, tension, stance, or takeaway instead of merely restating one question line.',
+    '11. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
+    '12. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
+    '13. Keep section summaries concise and factual.',
+    '14. Keep each summary under 15 Chinese characters when possible.',
+    '15. Must Do not split a question into one group and its answer into another',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,
     `Author: ${bundle.sourceAuthor}`,
@@ -632,19 +645,21 @@ function buildBaseTranscriptDialoguePrompt(
     '- Make topicTitleZh capture the broader theme, stance, tension, or takeaway of the section instead of merely paraphrasing the first question line.',
     '- Make topicTitleZh work for any video type: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
     '- topicTitleZh should still make sense when shown alone to a reader who has not seen the transcript.',
-    '- Keep topicTitleZh under 10 words.',
+    '- Keep topicTitleZh to exactly 4 Chinese characters when possible.',
     '- Avoid generic labels and avoid copying a transcript line verbatim when a better abstraction is possible.',
     '- Return topicSummaryZh as one concise natural Simplified Chinese summary sentence for the broader point of the section.',
-    '- Keep topicSummaryZh under 10 words.',
+    '- Keep topicSummaryZh under 15 Chinese characters when possible.',
     '- Also return groups for the smaller exchanges inside this larger section.',
     '- Keep the section-level topicTitleZh/topicSummaryZh as the big chapter title and summary for the whole section.',
-    '- Each item in groups must represent **one main question and one answer pair**, if no question found, generate one question according to the answer',
+    '- Each item in groups must represent exactly one main question and exactly one answer pair. If no question is found, generate one according to the answer.',
+    ...EXACTLY_ONE_QA_RULES,
     '- For conversation content, create a new group for each distinct question and its direct answer whenever possible.',
     '- Do not lump multiple distinct questions into one group just because they share a theme.',
     '- For non-conversation content, group by coherent subtopic or idea block.',
     '- Each group must include a concise topicTitleZh under 10 words.',
     '- Each group must include the translated turns that belong to that group only, in original order.',
     '- Every translated turn must appear in exactly one group.',
+    '- FINAL CHECK BEFORE RETURNING: delete any group that does not end with exactly one question and exactly one answer.',
     '- Must Do not split a question into one group and its answer into another',
     ...(usesManualPlaceholderCopy
       ? [
@@ -691,6 +706,7 @@ function buildQuickSectionQaPrompt(
     'Rules:',
     '- If the section is an interview, chat show, podcast, panel, or speaker exchange, identify the main question being raised and the main answer given in this section.',
     '- If the section is not a literal Q&A, rewrite the section as the central question the content is addressing and the clearest answer or takeaway it provides.',
+    ...EXACTLY_ONE_QA_RULES,
     '- Keep question and answer grounded in the transcript. Do not invent details.',
     '- Keep the original-language question and answer concise.',
     '- Translate both into natural Simplified Chinese.',
@@ -698,10 +714,11 @@ function buildQuickSectionQaPrompt(
     '- Make topicTitleZh capture the broader theme, stance, tension, or takeaway instead of merely restating the question literally.',
     '- Make topicTitleZh work for any video type: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
     '- topicTitleZh should still make sense when shown alone to a reader who has not seen the transcript.',
-    '- Keep topicTitleZh under 10 words.',
+    '- Keep topicTitleZh to exactly 4 Chinese characters when possible.',
     '- Avoid generic labels and avoid copying a transcript line verbatim when a better abstraction is possible.',
     '- Return topicSummaryZh as one concise Simplified Chinese summary sentence for the broader point of the exchange.',
-    '- Keep topicSummaryZh under 10 words.',
+    '- Keep topicSummaryZh under 15 Chinese characters when possible.',
+    '- FINAL CHECK BEFORE RETURNING: delete the section result if it does not end with exactly one question and exactly one answer.',
     '- Must Do not split a question into one group and its answer into another',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,

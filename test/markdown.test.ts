@@ -15,22 +15,22 @@ describe('renderMarkdownBlock', () => {
     expect(renderMarkdownBlock('> 关键观点')).toBe('<blockquote><p>关键观点</p></blockquote>');
     expect(renderMarkdownBlock('- 第一条\n- 第二条')).toBe('<ul><li>第一条</li><li>第二条</li></ul>');
     expect(renderMarkdownBlock('[00:32] Jen: 这是一个问题')).toBe(
-      '<div class="qa"><div class="qa-meta"><div class="qa-speaker">Jen</div><div class="qa-time"><span class="timestamp rail compact">00:32</span></div></div><div class="qa-body">这是一个问题</div></div>',
+      '<div class="qa"><div class="qa-meta"><div class="qa-speaker">Jen:</div><div class="qa-time"><span class="timestamp rail compact">00:32</span></div></div><div class="qa-body">这是一个问题</div></div>',
     );
     expect(renderMarkdownBlock('[00:32] 这是一个问题')).toBe(
       '<div class="qa"><div class="qa-meta"><div class="qa-time"><span class="timestamp rail compact">00:32</span></div></div><div class="qa-body">这是一个问题</div></div>',
     );
     expect(renderMarkdownBlock('欧文·詹宁斯（Owen Jennings）: 这是一个回答')).toBe(
-      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">欧文·詹宁斯（Owen Jennings）</div></div><div class="qa-body">这是一个回答</div></div>',
+      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">欧文·詹宁斯（Owen Jennings）:</div></div><div class="qa-body">这是一个回答</div></div>',
     );
     expect(renderMarkdownBlock('**主持人**：这是一个问题')).toBe(
-      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">主持人</div></div><div class="qa-body">这是一个问题</div></div>',
+      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">主持人:</div></div><div class="qa-body">这是一个问题</div></div>',
     );
     expect(renderMarkdownBlock('**主持人**\n这是一个问题')).toBe(
-      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">主持人</div></div><div class="qa-body">这是一个问题</div></div>',
+      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">主持人:</div></div><div class="qa-body">这是一个问题</div></div>',
     );
     expect(renderMarkdownBlock('Jen: 这是一个问题')).toBe(
-      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">Jen</div></div><div class="qa-body">这是一个问题</div></div>',
+      '<div class="qa no-time"><div class="qa-meta"><div class="qa-speaker">Jen:</div></div><div class="qa-body">这是一个问题</div></div>',
     );
   });
 

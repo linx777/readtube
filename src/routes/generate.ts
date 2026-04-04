@@ -592,6 +592,86 @@ function renumberManualPlaceholderSections(sections: TranscriptSection[]): Trans
   });
 }
 
+function attachSectionPreviewCopy(
+  sections: TranscriptSection[],
+  previewSections: Array<Pick<TranscriptSection, 'startLabel' | 'endLabel' | 'subtitle' | 'summary'>>,
+): TranscriptSection[] {
+  if (!sections.length || !previewSections.length) {
+    return sections;
+  }
+
+  const normalizedPreviewSections = previewSections
+    .map((preview) => ({
+      ...preview,
+      subtitle: preview.subtitle.trim(),
+      summary: preview.summary.trim(),
+      startSeconds: parseTimestampLabelToSeconds(preview.startLabel),
+      endSeconds: parseTimestampLabelToSeconds(preview.endLabel),
+    }))
+    .filter((preview) => preview.subtitle && preview.summary);
+
+  if (!normalizedPreviewSections.length) {
+    return sections;
+  }
+
+  if (sections.length === normalizedPreviewSections.length) {
+    return sections.map((section, index) => ({
+      ...section,
+      subtitleZh: section.subtitleZh?.trim() || normalizedPreviewSections[index].subtitle,
+      summaryZh: section.summaryZh?.trim() || normalizedPreviewSections[index].summary,
+    }));
+  }
+
+  return sections.map((section) => {
+    const sectionStartSeconds = parseTimestampLabelToSeconds(section.startLabel);
+    const sectionEndSeconds = parseTimestampLabelToSeconds(section.endLabel);
+
+    const bestPreview = normalizedPreviewSections.reduce<{
+      subtitle: string;
+      summary: string;
+      score: number;
+    } | null>((best, preview) => {
+      if (
+        sectionStartSeconds === null
+        || sectionEndSeconds === null
+        || preview.startSeconds === null
+        || preview.endSeconds === null
+      ) {
+        return best;
+      }
+
+      const overlapSeconds = Math.max(
+        0,
+        Math.min(sectionEndSeconds, preview.endSeconds) - Math.max(sectionStartSeconds, preview.startSeconds),
+      );
+      const boundaryDistance =
+        Math.abs(sectionStartSeconds - preview.startSeconds)
+        + Math.abs(sectionEndSeconds - preview.endSeconds);
+      const score = overlapSeconds * 1_000 - boundaryDistance;
+
+      if (!best || score > best.score) {
+        return {
+          subtitle: preview.subtitle,
+          summary: preview.summary,
+          score,
+        };
+      }
+
+      return best;
+    }, null);
+
+    if (!bestPreview) {
+      return section;
+    }
+
+    return {
+      ...section,
+      subtitleZh: section.subtitleZh?.trim() || bestPreview.subtitle,
+      summaryZh: section.summaryZh?.trim() || bestPreview.summary,
+    };
+  });
+}
+
 function renderTranscriptIntro(
   bundle: TranscriptBundle,
   readingMode: ReadingMode,
@@ -714,10 +794,12 @@ function resolveSectionThemeCopy(section: SectionThemeCopy): { title: string; su
 
 function renderSectionThemeHtml(section: SectionThemeCopy): string {
   const resolved = resolveSectionThemeCopy(section);
+  const summaryHtml = resolved.summary
+    ? `<span class="section-theme-divider">: </span><span class="section-theme-summary">${escapeHtml(resolved.summary)}</span>`
+    : '';
   return [
     '<section class="section-theme-block">',
-    `<h2 class="section-theme-title">${escapeHtml(resolved.title)}</h2>`,
-    `<p class="section-theme-summary">${escapeHtml(resolved.summary)}</p>`,
+    `<h2 class="section-theme-title"><span class="section-theme-title-text">${escapeHtml(resolved.title)}</span>${summaryHtml}</h2>`,
     '</section>',
   ].join('');
 }
@@ -1183,26 +1265,17 @@ function wrapDialogueSectionHtml(sectionId: string, html: string): string {
   return `<div class="dialogue-section-block" data-dialogue-section-id="${escapeHtml(sectionId)}">${html}</div>`;
 }
 
+function renderHiddenDialogueSectionHtml(sectionId: string): string {
+  return `<div class="dialogue-section-block" data-dialogue-section-id="${escapeHtml(sectionId)}" hidden aria-hidden="true"></div>`;
+}
+
 function renderDialogueSectionPreviewHtml(section: TranscriptSection): string {
   return [
     renderSectionThemeHtml(section),
-    `<h2 class="section-heading"><span class="section-rail"><span class="timestamp rail">${escapeHtml(`${section.startLabel}-${section.endLabel}`)}</span></span><span class="section-title">内容翻译中</span></h2>`,
     renderDialogueLoadingCardHtml(
       'Gemini 正在打磨中文表达',
       '会优先保持自然、直接、适合阅读的中文语感。',
     ),
-  ].join('');
-}
-
-function renderMergedDialogueSectionHtml(section: TranscriptSection): string {
-  return [
-    renderSectionThemeHtml(section),
-    `<h2 class="section-heading"><span class="section-rail"><span class="timestamp rail">${escapeHtml(`${section.startLabel}-${section.endLabel}`)}</span></span><span class="section-title">已并入上一节</span></h2>`,
-    '<section class="qa transcript-line">',
-    '<div class="qa-body transcript-body">',
-    '<p>为保持说话连续性，这一小段内容已合并到上一节展示。</p>',
-    '</div>',
-    '</section>',
   ].join('');
 }
 
@@ -1611,7 +1684,10 @@ export async function handleGenerateRoute(
                 });
 
                 sectionsResult = {
-                  sections: buildManualTranscriptSections(transcriptBundle),
+                  sections: attachSectionPreviewCopy(
+                    buildManualTranscriptSections(transcriptBundle),
+                    overviewResult.sections,
+                  ),
                   model: MANUAL_SECTION_MODEL,
                 };
               }
@@ -1720,7 +1796,7 @@ export async function handleGenerateRoute(
                       pendingDialogueSectionId = '';
                       await emitHtml(
                         'dialogue-replace',
-                        wrapDialogueSectionHtml(sectionId, renderMergedDialogueSectionHtml(section)),
+                        renderHiddenDialogueSectionHtml(sectionId),
                         sectionId,
                       );
                     }

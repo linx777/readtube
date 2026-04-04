@@ -20,6 +20,10 @@ function renderTimestamp(timestamp: string, compact = false): string {
   return `<span class="${className}">${escapeHtml(timestamp)}</span>`;
 }
 
+function renderSpeakerMeta(speaker: string): string {
+  return `<div class="qa-speaker">${escapeHtml(speaker)}:</div>`;
+}
+
 function renderSectionHeading(timestamp: string, title: string): string {
   return `<h2 class="section-heading"><span class="section-rail">${renderTimestamp(timestamp)}</span><span class="section-title">${renderInlineMarkdown(title)}</span></h2>`;
 }
@@ -51,8 +55,8 @@ function renderSpeakerParagraph(content: string): string | null {
   const speaker = match[2];
   const body = match[3];
   const meta = timestamp
-    ? `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
-    : `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div></div>`;
+    ? `<div class="qa-meta">${renderSpeakerMeta(speaker)}<div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
+    : `<div class="qa-meta">${renderSpeakerMeta(speaker)}</div>`;
   const className = timestamp ? 'qa' : 'qa no-time';
   return `<div class="${className}">${meta}<div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
 }
@@ -75,8 +79,8 @@ function renderSpeakerBlock(lines: string[]): string | null {
   }
 
   const meta = timestamp
-    ? `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div><div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
-    : `<div class="qa-meta"><div class="qa-speaker">${escapeHtml(speaker)}</div></div>`;
+    ? `<div class="qa-meta">${renderSpeakerMeta(speaker)}<div class="qa-time">${renderTimestamp(timestamp, true)}</div></div>`
+    : `<div class="qa-meta">${renderSpeakerMeta(speaker)}</div>`;
   const className = timestamp ? 'qa' : 'qa no-time';
   return `<div class="${className}">${meta}<div class="qa-body">${renderInlineMarkdown(body)}</div></div>`;
 }
