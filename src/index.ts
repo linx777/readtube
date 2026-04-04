@@ -1,4 +1,5 @@
 import { handleGenerateRoute } from './routes/generate';
+import { handleHotRoute, handleViewRoute } from './routes/hot';
 import { renderAppPage } from './ui/page';
 
 export interface Env {
@@ -6,6 +7,10 @@ export interface Env {
   GEMINI_MODEL?: string;
   GEMINI_INSIGHTS_MODEL?: string;
   GEMINI_DIALOGUE_MODEL?: string;
+  SUPADATA_API_KEY?: string;
+  SUPADATA_TRANSCRIPT_MODE?: string;
+  CONTENT_CACHE?: KVNamespace;
+  HOT_DB?: D1Database;
 }
 
 function htmlResponse(html: string): Response {
@@ -39,6 +44,17 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/generate') {
       return handleGenerateRoute(request, env, ctx);
+    }
+
+    if ((request.method === 'GET' || isHead) && url.pathname === '/api/hot') {
+      if (isHead) {
+        return textResponse('', 200);
+      }
+      return handleHotRoute(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/view') {
+      return handleViewRoute(request, env);
     }
 
     if ((request.method === 'GET' || isHead) && url.pathname === '/health') {

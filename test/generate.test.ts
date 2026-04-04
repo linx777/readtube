@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFirstCallTranscriptBundle,
   buildManualTranscriptSections,
+  buildTranscriptSectionsFromTimestampBoundaries,
   buildTranscriptSliceBundles,
   mergeDialogueSectionBoundary,
+  mergeQuestionAnswerSplitSections,
   shouldSliceFirstGeminiCall,
   usesGeminiReadingFlow,
 } from '../src/routes/generate';
@@ -41,9 +43,13 @@ function createDialogueSlice(
   overrides: {
     section?: Partial<TranscriptDialogueSliceResult['section']>;
     turns?: TranscriptDialogueSliceResult['turns'];
+    groups?: TranscriptDialogueSliceResult['groups'];
     model?: string;
   } = {},
 ): TranscriptDialogueSliceResult {
+  const turns = overrides.turns ?? [
+    { timestamp: '00:00', speaker: 'Host', textZh: 'Example line' },
+  ];
   return {
     section: {
       startLabel: '00:00',
@@ -53,9 +59,8 @@ function createDialogueSlice(
       transcript: '[00:00] Example line',
       ...overrides.section,
     },
-    turns: overrides.turns ?? [
-      { timestamp: '00:00', speaker: 'Host', textZh: 'Example line' },
-    ],
+    turns,
+    groups: overrides.groups ?? [],
     model: overrides.model ?? 'test-model',
   };
 }
@@ -162,6 +167,50 @@ describe('buildManualTranscriptSections', () => {
   });
 });
 
+describe('buildTranscriptSectionsFromTimestampBoundaries', () => {
+  it('rebuilds exact section transcript slices from Gemini timestamp boundaries', () => {
+    const bundle = createBundle({
+      durationSeconds: 4 * 60,
+      chunks: [
+        { start: 5, end: 20, text: 'Opening line' },
+        { start: 65, end: 90, text: 'Follow-up question' },
+        { start: 125, end: 140, text: 'Main answer' },
+        { start: 190, end: 210, text: 'Closing takeaway' },
+      ],
+    });
+
+    expect(buildTranscriptSectionsFromTimestampBoundaries(bundle, [
+      {
+        startLabel: '00:05',
+        endLabel: '01:05',
+        subtitle: 'Opening setup',
+        summary: 'Frames the topic and raises the first question.',
+      },
+      {
+        startLabel: '02:05',
+        endLabel: '03:10',
+        subtitle: 'Answer and close',
+        summary: 'Responds to the question and lands the takeaway.',
+      },
+    ])).toEqual([
+      {
+        startLabel: '00:05',
+        endLabel: '01:05',
+        subtitle: 'Opening setup',
+        summary: 'Frames the topic and raises the first question.',
+        transcript: '[00:05] Opening line\n[01:05] Follow-up question',
+      },
+      {
+        startLabel: '02:05',
+        endLabel: '03:10',
+        subtitle: 'Answer and close',
+        summary: 'Responds to the question and lands the takeaway.',
+        transcript: '[02:05] Main answer\n[03:10] Closing takeaway',
+      },
+    ]);
+  });
+});
+
 describe('buildTranscriptSliceBundles', () => {
   it('splits a long transcript bundle into contiguous request slices', () => {
     const bundle = createBundle({
@@ -201,6 +250,35 @@ describe('buildTranscriptSliceBundles', () => {
           { start: 36 * 60 + 5, end: 36 * 60 + 30, text: 'Third slice begins' },
         ],
         transcriptText: 'Third slice begins',
+      },
+    ]);
+  });
+});
+
+describe('mergeQuestionAnswerSplitSections', () => {
+  it('merges adjacent sections when one ends with a question and the next begins with the answer', () => {
+    expect(mergeQuestionAnswerSplitSections([
+      {
+        startLabel: '00:00',
+        endLabel: '00:30',
+        subtitle: '提出问题',
+        summary: '先提出核心问题。',
+        transcript: '[00:00] Why is adoption slowing down?',
+      },
+      {
+        startLabel: '00:30',
+        endLabel: '01:00',
+        subtitle: '解释原因',
+        summary: '再解释背后的原因。',
+        transcript: '[00:30] Companies are becoming more careful.',
+      },
+    ])).toEqual([
+      {
+        startLabel: '00:00',
+        endLabel: '01:00',
+        subtitle: '解释原因',
+        summary: '再解释背后的原因。',
+        transcript: '[00:00] Why is adoption slowing down?\n[00:30] Companies are becoming more careful.',
       },
     ]);
   });
@@ -266,6 +344,133 @@ describe('mergeDialogueSectionBoundary', () => {
     ]);
     expect(normalizedNext.turns).toEqual([
       { timestamp: '01:00:01', speaker: 'Marc', textZh: '后一段。继续补充。' },
+    ]);
+  });
+
+  it('merges same-speaker spillover between adjacent dialogue groups and sections', () => {
+    const previous = createDialogueSlice({
+      section: {
+        startLabel: '58:39',
+        endLabel: '01:00:00',
+      },
+      turns: [
+        { timestamp: '58:39', speaker: 'Jen', textZh: '最后一个问题，你和 Ben 在什么事情上存在分歧但最终达成共识？' },
+        { timestamp: '58:50', speaker: 'Marc', textZh: '我们经常争论，但我们都乐于被对方说服，所以大多数时候能达成一致。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '合伙人间的协作',
+          turns: [
+            { timestamp: '58:39', speaker: 'Jen', textZh: '最后一个问题，你和 Ben 在什么事情上存在分歧但最终达成共识？' },
+            { timestamp: '58:50', speaker: 'Marc', textZh: '我们经常争论，但我们都乐于被对方说服，所以大多数时候能达成一致。' },
+          ],
+        },
+      ],
+    });
+    const next = createDialogueSlice({
+      section: {
+        startLabel: '01:00:03',
+        endLabel: '01:03:00',
+        subtitle: '安德森的投资哲学与AI展望',
+      },
+      turns: [
+        { timestamp: '01:00:03', speaker: 'Marc', textZh: '我和本经常讨论的一个核心问题是公司的公众形象。' },
+        { timestamp: '01:01:03', speaker: 'Jen', textZh: '你怎么看这种张力？' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '公司公开立场与争议',
+          turns: [
+            { timestamp: '01:00:03', speaker: 'Marc', textZh: '我和本经常讨论的一个核心问题是公司的公众形象。' },
+            { timestamp: '01:01:03', speaker: 'Jen', textZh: '你怎么看这种张力？' },
+          ],
+        },
+      ],
+    });
+
+    const [mergedPrevious, remainingNext] = mergeDialogueSectionBoundary(previous, next, true);
+
+    expect(mergedPrevious.turns).toEqual([
+      { timestamp: '58:39', speaker: 'Jen', textZh: '最后一个问题，你和 Ben 在什么事情上存在分歧但最终达成共识？' },
+      {
+        timestamp: '58:50',
+        speaker: 'Marc',
+        textZh: '我们经常争论，但我们都乐于被对方说服，所以大多数时候能达成一致。我和本经常讨论的一个核心问题是公司的公众形象。',
+      },
+    ]);
+    expect(mergedPrevious.groups).toEqual([
+      {
+        topicTitleZh: '合伙人间的协作',
+        turns: [
+          { timestamp: '58:39', speaker: 'Jen', textZh: '最后一个问题，你和 Ben 在什么事情上存在分歧但最终达成共识？' },
+          {
+            timestamp: '58:50',
+            speaker: 'Marc',
+            textZh: '我们经常争论，但我们都乐于被对方说服，所以大多数时候能达成一致。我和本经常讨论的一个核心问题是公司的公众形象。',
+          },
+        ],
+      },
+    ]);
+    expect(remainingNext.turns).toEqual([
+      { timestamp: '01:01:03', speaker: 'Jen', textZh: '你怎么看这种张力？' },
+    ]);
+    expect(remainingNext.groups).toEqual([
+      {
+        topicTitleZh: '公司公开立场与争议',
+        turns: [
+          { timestamp: '01:01:03', speaker: 'Jen', textZh: '你怎么看这种张力？' },
+        ],
+      },
+    ]);
+  });
+
+  it('merges same-speaker spillover between adjacent groups inside one section before rendering', () => {
+    const previous = createDialogueSlice({
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '问题一？' },
+        { timestamp: '00:10', speaker: 'Marc', textZh: '回答上半段。' },
+        { timestamp: '00:20', speaker: 'Marc', textZh: '回答下半段。' },
+        { timestamp: '00:30', speaker: 'Jen', textZh: '问题二？' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '第一问',
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '问题一？' },
+            { timestamp: '00:10', speaker: 'Marc', textZh: '回答上半段。' },
+          ],
+        },
+        {
+          topicTitleZh: '第二问',
+          turns: [
+            { timestamp: '00:20', speaker: 'Marc', textZh: '回答下半段。' },
+            { timestamp: '00:30', speaker: 'Jen', textZh: '问题二？' },
+          ],
+        },
+      ],
+    });
+    const next = createDialogueSlice({
+      turns: [
+        { timestamp: '00:40', speaker: 'Host', textZh: '后续问题。' },
+      ],
+    });
+
+    const [normalizedPrevious] = mergeDialogueSectionBoundary(previous, next, true);
+
+    expect(normalizedPrevious.groups).toEqual([
+      {
+        topicTitleZh: '第一问',
+        turns: [
+          { timestamp: '00:00', speaker: 'Jen', textZh: '问题一？' },
+          { timestamp: '00:10', speaker: 'Marc', textZh: '回答上半段。回答下半段。' },
+        ],
+      },
+      {
+        topicTitleZh: '第二问',
+        turns: [
+          { timestamp: '00:30', speaker: 'Jen', textZh: '问题二？' },
+        ],
+      },
     ]);
   });
 });

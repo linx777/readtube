@@ -536,6 +536,24 @@ function renderStyles(): string {
       align-items: center;
       gap: 12px;
       min-width: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .brand:hover:not(:disabled) {
+      transform: none;
+      opacity: 1;
+    }
+
+    .brand:focus-visible {
+      outline: 2px solid rgba(132, 95, 45, 0.5);
+      outline-offset: 6px;
     }
 
     .brand-mark {
@@ -859,129 +877,8 @@ function renderStyles(): string {
       align-content: start;
     }
 
-    .story-card,
     .cache-card {
       display: block;
-    }
-
-    .story-card {
-      padding: 0;
-      background: none;
-      border: 0;
-      box-shadow: none;
-      backdrop-filter: none;
-    }
-
-    .story-cover {
-      position: relative;
-      width: 100%;
-      min-height: 232px;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background:
-        linear-gradient(180deg, rgba(10, 10, 10, 0.02), rgba(10, 10, 10, 0.45)),
-        linear-gradient(140deg, #5a4a36, #1d1a16 58%, #0a0908);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
-    }
-
-    .story-cover.has-image {
-      background: #181512;
-    }
-
-    .story-cover::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(15, 12, 9, 0.02), rgba(15, 12, 9, 0.68));
-      z-index: 1;
-    }
-
-    .story-cover img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      opacity: 0;
-      transition: opacity 220ms ease;
-    }
-
-    .story-cover.has-image img {
-      opacity: 1;
-    }
-
-    .story-cover-scrim {
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-    }
-
-    .story-tags {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      z-index: 2;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .story-tag {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 0 14px;
-      border-radius: 999px;
-      color: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.26);
-      background: rgba(244, 239, 228, 0.16);
-      backdrop-filter: blur(10px);
-      font: 700 11px/1 var(--sans);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .story-content {
-      position: absolute;
-      inset: auto 18px 18px;
-      z-index: 2;
-      display: grid;
-      gap: 10px;
-      color: white;
-    }
-
-    .story-title {
-      margin: 0;
-      font: 500 24px/1.14 var(--sans);
-      letter-spacing: -0.01em;
-      color: rgba(255, 255, 255, 0.96);
-      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.3);
-    }
-
-    .story-summary {
-      display: none;
-      max-width: 34ch;
-      margin: 0;
-      color: rgba(255, 255, 255, 0.9);
-      font: 400 13px/1.45 var(--sans);
-      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.28);
-      overflow: hidden;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 6;
-      line-clamp: 6;
-    }
-
-    .story-summary:not(:empty) {
-      display: -webkit-box;
-    }
-
-    .story-meta {
-      display: none;
-    }
-
-    .cache-card {
       padding: 0;
       background: none;
       border: 0;
@@ -992,6 +889,40 @@ function renderStyles(): string {
     .cache-list {
       display: grid;
       gap: 22px;
+    }
+
+    .cache-empty {
+      display: grid;
+      gap: 14px;
+      padding: 24px 22px;
+      border-radius: 28px;
+      border: 1px solid rgba(87, 73, 56, 0.12);
+      background:
+        radial-gradient(circle at top left, rgba(171, 138, 92, 0.16), transparent 44%),
+        linear-gradient(180deg, rgba(255, 252, 247, 0.92), rgba(244, 239, 231, 0.9));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    }
+
+    .cache-empty-kicker {
+      margin: 0;
+      color: rgba(109, 87, 60, 0.88);
+      font: 700 11px/1 var(--sans);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .cache-empty-title {
+      margin: 0;
+      color: var(--accent-strong);
+      font: 600 24px/1.18 var(--sans);
+      letter-spacing: -0.02em;
+    }
+
+    .cache-empty-copy {
+      margin: 0;
+      color: var(--muted-strong);
+      font: 400 15px/1.6 var(--sans);
+      max-width: 30ch;
     }
 
     .cache-item {
@@ -2105,6 +2036,43 @@ function renderStyles(): string {
       line-height: 1.26;
     }
 
+    .article .section-theme-block {
+      margin: 56px 0 22px;
+      padding: 22px 24px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(255, 248, 238, 0.96), rgba(248, 239, 226, 0.92));
+      border: 1px solid rgba(33, 24, 17, 0.08);
+      box-shadow: 0 16px 36px rgba(77, 58, 38, 0.06);
+    }
+
+    .article .section-theme-title {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 30px);
+      line-height: 1.24;
+      letter-spacing: -0.02em;
+    }
+
+    .article .section-theme-summary {
+      margin: 12px 0 0;
+      font-family: var(--sans);
+      font-size: calc(15px * var(--reader-copy-scale));
+      line-height: 1.7;
+      color: var(--muted-strong);
+      opacity: 0.92;
+    }
+
+    .article .dialogue-subtopic-block {
+      margin: 28px 0 0;
+    }
+
+    .article .dialogue-subtopic-title {
+      margin: 0 0 12px;
+      font-size: clamp(18px, 2.2vw, 22px);
+      line-height: 1.35;
+      color: #3f352c;
+      letter-spacing: -0.01em;
+    }
+
     .article .section-heading {
       display: grid;
       grid-template-columns: max-content minmax(0, 1fr);
@@ -2781,27 +2749,13 @@ function renderScript(): string {
   return `
     const READING_MODE_OPTIONS = ${JSON.stringify(READING_MODE_OPTIONS)};
     const DEFAULT_READING_MODE = ${JSON.stringify(DEFAULT_READING_MODE)};
-    const HOT_ITEMS = [
-      {
-        title: 'Oceanic Currents and the Future of Energy',
-        thumbnailUrl: 'https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg',
-        label: 'VIDEO',
-      },
-      {
-        title: 'Sustainable Architecture in Coastal Areas',
-        thumbnailUrl: 'https://i.ytimg.com/vi/pJY0mBWHPw4/hqdefault.jpg',
-        label: 'VIDEO',
-      },
-      {
-        title: 'Principles of Modern Typography in Web Design',
-        thumbnailUrl: 'https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg',
-        label: 'VIDEO',
-      },
-    ];
+    const HIDDEN_SAVED_CARD_TITLES = new Set(['open a youtube video']);
 
     const TRANSCRIPT_CACHE_PREFIX = 'xvc:transcript:';
     const TRANSLATION_CACHE_PREFIX = 'xvc:translation:';
-    const TRANSLATION_CACHE_VERSION = 2;
+    const TRANSLATION_CACHE_VERSION = 7;
+    const HOT_ITEMS_ENDPOINT = '/api/hot?limit=6';
+    const VIDEO_VIEW_ENDPOINT = '/api/view';
     const GEMINI_API_KEY_STORAGE_KEY = 'xvc:settings:gemini-api-key';
     const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const FULL_GEMINI_LOADING_HINTS = {
@@ -2986,6 +2940,7 @@ function renderScript(): string {
     const readerShell = document.querySelector('.reader-shell');
     const readingTopbar = document.querySelector('[data-reading-topbar]');
     const backButton = document.querySelector('[data-back-button]');
+    const brandButton = document.querySelector('[data-brand-home]');
     const readingProgress = document.querySelector('[data-reading-progress]');
     const readerTypeButton = document.querySelector('[data-reader-type-button]');
     const readerThemeButton = document.querySelector('[data-reader-theme-button]');
@@ -2997,13 +2952,6 @@ function renderScript(): string {
     const articleLoadingBody = document.querySelector('[data-article-loading-body]');
     const empty = document.querySelector('[data-empty]');
     const error = document.querySelector('[data-error]');
-    const sideTitle = document.querySelector('[data-side-title]');
-    const sideSummary = document.querySelector('[data-side-summary]');
-    const sideTags = document.querySelector('[data-side-tags]');
-    const sideThumb = document.querySelector('[data-side-thumb]');
-    const sideCover = document.querySelector('[data-side-cover]');
-    const sideMetaTitle = document.querySelector('[data-side-meta-title]');
-    const sideMetaSubtitle = document.querySelector('[data-side-meta-subtitle]');
     const savedTabs = document.querySelectorAll('[data-saved-tab]');
     const cacheList = document.querySelector('[data-cache-list]');
     const loginButton = document.querySelector('[data-login-button]');
@@ -3025,11 +2973,9 @@ function renderScript(): string {
     let toastTimer = null;
     let searchReenterTimer = null;
     let suppressCacheHitToast = false;
-    let activeSavedTab = 'recent';
+    let activeSavedTab = 'hot';
     let savedTabOverridden = false;
     let activeReadingMode = DEFAULT_READING_MODE;
-    let currentSideModeTag = 'VIDEO';
-    let currentSourceSummary = '';
     let currentSourceTitle = '';
     let currentSourceAuthor = '';
     let currentThumbnailUrl = '';
@@ -3047,6 +2993,8 @@ function renderScript(): string {
     let loadingHintFallbackTitle = '';
     let loadingHintFallbackBody = '';
     let currentRenderedReadingMode = ${JSON.stringify(DEFAULT_READING_MODE)};
+    let hotItems = [];
+    let hotItemsLoaded = false;
 
     function usesGeminiReadingFlow(mode) {
       return READING_MODE_OPTIONS.some((option) => option.value === normalizeReadingMode(mode));
@@ -3438,68 +3386,30 @@ function renderScript(): string {
       return match && match[1] ? match[1] : '';
     }
 
-    function getTranscriptCacheKey(videoId) {
-      return TRANSCRIPT_CACHE_PREFIX + videoId;
-    }
-
     function getTranslationCacheKey(videoId, readingMode) {
       const normalizedMode = normalizeReadingMode(readingMode);
       return TRANSLATION_CACHE_PREFIX + normalizedMode + ':' + videoId;
     }
 
-    function readCachedTranscript(videoId) {
-      if (!videoId) {
-        return null;
-      }
+    function clearLegacyTranscriptCaches() {
+      const keysToRemove = [];
 
       try {
-        const raw = localStorage.getItem(getTranscriptCacheKey(videoId));
-        if (!raw) {
-          return null;
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index);
+          if (key && key.startsWith(TRANSCRIPT_CACHE_PREFIX)) {
+            keysToRemove.push(key);
+          }
         }
-
-        const parsed = JSON.parse(raw);
-        const bundle = parsed && typeof parsed === 'object' && parsed.bundle ? parsed.bundle : parsed;
-        const cachedAt =
-          parsed && typeof parsed === 'object' && typeof parsed.cachedAt === 'number'
-            ? parsed.cachedAt
-            : 0;
-
-        if (!bundle || bundle.videoId !== videoId) {
-          localStorage.removeItem(getTranscriptCacheKey(videoId));
-          return null;
-        }
-
-        if (!cachedAt || Date.now() - cachedAt > TRANSCRIPT_CACHE_TTL_MS) {
-          localStorage.removeItem(getTranscriptCacheKey(videoId));
-          return null;
-        }
-
-        return bundle;
       } catch {
-        try {
-          localStorage.removeItem(getTranscriptCacheKey(videoId));
-        } catch {}
-        return null;
-      }
-    }
-
-    function writeCachedTranscript(bundle) {
-      if (!bundle || !bundle.videoId) {
         return;
       }
 
-      try {
-        localStorage.setItem(
-          getTranscriptCacheKey(bundle.videoId),
-          JSON.stringify({
-            cachedAt: Date.now(),
-            bundle,
-          }),
-        );
-      } catch {}
-
-      renderCachedTranscriptList();
+      for (const key of keysToRemove) {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      }
     }
 
     function readCachedTranslation(videoId, readingMode) {
@@ -3552,6 +3462,7 @@ function renderScript(): string {
         }
 
         return {
+          cachedAt,
           articleHtml,
           meta,
         };
@@ -3579,6 +3490,8 @@ function renderScript(): string {
           }),
         );
       } catch {}
+
+      renderCachedTranscriptList();
     }
 
     function renderCachedTranslation(cached) {
@@ -3596,9 +3509,43 @@ function renderScript(): string {
       renderMeta(cached.meta);
       setArticleLoading(false);
       setDialogueLoading(false);
+      setStatus('', { busy: false, mode: 'done' });
       latestCompletionMeta = cached.meta;
       enhanceTimestampLinks(article);
       updateReadingProgress();
+      return true;
+    }
+
+    function showLocalTranslationCacheToast() {
+      showToast('已读取本地 AI 缓存', '这个视频的中文整理结果已缓存在本地，本次直接展示。');
+    }
+
+    function tryRenderLocalTranslationCache(videoId, readingMode, options) {
+      if (!videoId || !usesGeminiReadingFlow(readingMode)) {
+        return false;
+      }
+
+      const cachedTranslation = readCachedTranslation(videoId, readingMode);
+      if (!cachedTranslation) {
+        return false;
+      }
+
+      if (options && options.prepareUi) {
+        setError('');
+        cancelCurrentRequest();
+        setLoading(false);
+        resetArticle();
+        showArticleView();
+      }
+
+      if (!renderCachedTranslation(cachedTranslation)) {
+        return false;
+      }
+
+      void recordVideoView(cachedTranslation.meta);
+      if (!options || options.showToast !== false) {
+        showLocalTranslationCacheToast();
+      }
       return true;
     }
 
@@ -3611,57 +3558,154 @@ function renderScript(): string {
         .replace(/'/g, '&#39;');
     }
 
-    function getCachedTranscriptEntries() {
+    function formatHotViewCount(value) {
+      const count = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+      if (!count) {
+        return '刚加入热门';
+      }
+
+      if (count >= 10000) {
+        const compact = (count / 10000).toFixed(count >= 100000 ? 0 : 1).replace(/\\.0$/, '');
+        return compact + ' 万浏览';
+      }
+
+      return new Intl.NumberFormat('zh-CN').format(count) + ' 浏览';
+    }
+
+    function normalizeHotItem(item) {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const videoId = typeof item.videoId === 'string' ? item.videoId.trim() : '';
+      const title = typeof item.title === 'string' ? item.title.trim() : '';
+      if (!videoId || !title) {
+        return null;
+      }
+
+      const author = typeof item.author === 'string' ? item.author.trim() : '';
+      const thumbnailUrl = typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl.trim() : '';
+      const youtubeUrl =
+        typeof item.youtubeUrl === 'string' && item.youtubeUrl.trim()
+          ? item.youtubeUrl.trim()
+          : 'https://www.youtube.com/watch?v=' + videoId;
+      const viewCount =
+        typeof item.viewCount === 'number' && Number.isFinite(item.viewCount)
+          ? Math.max(0, Math.floor(item.viewCount))
+          : 0;
+
+      return {
+        videoId,
+        title,
+        author,
+        thumbnailUrl,
+        youtubeUrl,
+        viewCount,
+      };
+    }
+
+    function toHotSavedCard(item) {
+      return {
+        videoId: item.videoId,
+        youtubeUrl: item.youtubeUrl,
+        title: item.title,
+        author: item.author,
+        thumbnailUrl: item.thumbnailUrl,
+        label: 'HOT',
+        metaText: formatHotViewCount(item.viewCount),
+      };
+    }
+
+    async function loadHotItems() {
+      try {
+        const response = await fetch(HOT_ITEMS_ENDPOINT, {
+          headers: {
+            accept: 'application/json',
+          },
+        });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        hotItems = Array.isArray(payload && payload.items)
+          ? payload.items.map((item) => normalizeHotItem(item)).filter(Boolean)
+          : [];
+        hotItemsLoaded = true;
+        renderCachedTranscriptList();
+      } catch {
+      }
+    }
+
+    async function recordVideoView(meta) {
+      if (!meta || typeof meta !== 'object') {
+        return;
+      }
+
+      const videoId = typeof meta.videoId === 'string' ? meta.videoId.trim() : '';
+      const sourceTitle = typeof meta.sourceTitle === 'string' ? meta.sourceTitle.trim() : '';
+      if (!videoId || !sourceTitle) {
+        return;
+      }
+
+      try {
+        await fetch(VIDEO_VIEW_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoId,
+            sourceTitle,
+            sourceAuthor: typeof meta.sourceAuthor === 'string' ? meta.sourceAuthor : '',
+            thumbnailUrl: typeof meta.thumbnailUrl === 'string' ? meta.thumbnailUrl : '',
+          }),
+          keepalive: true,
+        });
+        void loadHotItems();
+      } catch {
+      }
+    }
+
+    function getCachedTranslationEntries(readingMode) {
       const entries = [];
+      const normalizedMode = normalizeReadingMode(readingMode);
+      const translationPrefix = TRANSLATION_CACHE_PREFIX + normalizedMode + ':';
 
       for (let index = 0; index < localStorage.length; index += 1) {
         const key = localStorage.key(index);
-        if (!key || !key.startsWith(TRANSCRIPT_CACHE_PREFIX)) {
+        if (!key || !key.startsWith(translationPrefix)) {
+          continue;
+        }
+        const videoId = key.slice(translationPrefix.length);
+        const cachedTranslation = readCachedTranslation(videoId, readingMode);
+        if (!cachedTranslation || !cachedTranslation.meta || typeof cachedTranslation.meta !== 'object') {
           continue;
         }
 
-        try {
-          const raw = localStorage.getItem(key);
-          if (!raw) {
-            continue;
-          }
-
-          const parsed = JSON.parse(raw);
-          const bundle = parsed && typeof parsed === 'object' && parsed.bundle ? parsed.bundle : parsed;
-          const cachedAt =
-            parsed && typeof parsed === 'object' && typeof parsed.cachedAt === 'number'
-              ? parsed.cachedAt
-              : 0;
-
-          if (!bundle || !bundle.videoId || !bundle.sourceTitle) {
-            localStorage.removeItem(key);
-            continue;
-          }
-
-          if (!cachedAt || Date.now() - cachedAt > TRANSCRIPT_CACHE_TTL_MS) {
-            localStorage.removeItem(key);
-            continue;
-          }
-
-          entries.push({
-            videoId: bundle.videoId,
-            youtubeUrl: 'https://www.youtube.com/watch?v=' + bundle.videoId,
-            title: bundle.sourceTitle,
-            author: bundle.sourceAuthor || '',
-            thumbnailUrl: bundle.thumbnailUrl || '',
-            cachedAt,
-            bundle,
-          });
-        } catch {
-          localStorage.removeItem(key);
+        const title =
+          typeof cachedTranslation.meta.translatedTitleZh === 'string' && cachedTranslation.meta.translatedTitleZh.trim()
+            ? cachedTranslation.meta.translatedTitleZh.trim()
+            : (typeof cachedTranslation.meta.sourceTitle === 'string' ? cachedTranslation.meta.sourceTitle.trim() : '');
+        if (!title) {
+          continue;
         }
+
+        entries.push({
+          videoId,
+          youtubeUrl: 'https://www.youtube.com/watch?v=' + videoId,
+          title,
+          author: typeof cachedTranslation.meta.sourceAuthor === 'string' ? cachedTranslation.meta.sourceAuthor.trim() : '',
+          thumbnailUrl: typeof cachedTranslation.meta.thumbnailUrl === 'string' ? cachedTranslation.meta.thumbnailUrl.trim() : '',
+          cachedAt: cachedTranslation.cachedAt,
+        });
       }
 
       return entries.sort((left, right) => right.cachedAt - left.cachedAt);
     }
 
     function getDefaultSavedTab() {
-      return getCachedTranscriptEntries().length ? 'recent' : 'hot';
+      return 'hot';
     }
 
     function syncSavedTabDefault(force) {
@@ -3670,17 +3714,37 @@ function renderScript(): string {
       }
     }
 
+    function isHiddenSavedCard(item) {
+      if (!item || typeof item !== 'object') {
+        return false;
+      }
+
+      const title = typeof item.title === 'string' ? item.title.trim().toLowerCase() : '';
+      return HIDDEN_SAVED_CARD_TITLES.has(title);
+    }
+
     function renderSavedItems(items, interactive) {
-      cacheList.innerHTML = items.map((item) => {
+      const visibleItems = items.filter((item) => !isHiddenSavedCard(item));
+
+      cacheList.innerHTML = visibleItems.map((item) => {
         const thumb = item.thumbnailUrl
           ? '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'VIDEO') + '"><img src="' + escapeHtmlText(item.thumbnailUrl) + '" alt="' + escapeHtmlText(item.title) + ' 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>'
           : '<div class="cache-thumb" data-label="' + escapeHtmlText(item.label || 'VIDEO') + '"></div>';
 
-        const openTag = interactive && item.videoId
-          ? '<button type="button" class="cache-item' + (item.thumbnailUrl ? ' has-image' : '') + '" data-cache-video="' + escapeHtmlText(item.videoId) + '">'
+        const youtubeUrl = item.youtubeUrl || (item.videoId ? 'https://www.youtube.com/watch?v=' + item.videoId : '');
+        const metaParts = [];
+        if (item.author) {
+          metaParts.push('<span>' + escapeHtmlText(item.author) + '</span>');
+        }
+        if (item.metaText) {
+          metaParts.push('<span>' + escapeHtmlText(item.metaText) + '</span>');
+        }
+
+        const openTag = interactive && (item.videoId || youtubeUrl)
+          ? '<button type="button" class="cache-item' + (item.thumbnailUrl ? ' has-image' : '') + '" data-video-id="' + escapeHtmlText(item.videoId || '') + '" data-youtube-url="' + escapeHtmlText(youtubeUrl) + '">'
           : '<div class="cache-item' + (item.thumbnailUrl ? ' has-image' : '') + '">';
 
-        const closeTag = interactive && item.videoId ? '</button>' : '</div>';
+        const closeTag = interactive && (item.videoId || youtubeUrl) ? '</button>' : '</div>';
 
         return (
           openTag +
@@ -3688,12 +3752,21 @@ function renderScript(): string {
             '<div class="cache-body">' +
               '<p class="cache-item-title">' + escapeHtmlText(item.title) + '</p>' +
               '<div class="cache-item-meta">' +
-                (item.author ? '<span>' + escapeHtmlText(item.author) + '</span>' : '') +
+                metaParts.join('') +
               '</div>' +
             '</div>' +
           closeTag
         );
       }).join('');
+    }
+
+    function renderRecentEmptyState() {
+      cacheList.innerHTML =
+        '<div class="cache-empty">' +
+          '<p class="cache-empty-kicker">Recent</p>' +
+          '<p class="cache-empty-title">从你最爱的影片开始</p>' +
+          '<p class="cache-empty-copy">贴一条常看的 YouTube 视频，我们会把它整理成更适合阅读的中文内容。也可以切换速读版和详细版，用不同体验重新看视频。</p>' +
+        '</div>';
     }
 
     function renderSavedTabState() {
@@ -3706,13 +3779,20 @@ function renderScript(): string {
       syncSavedTabDefault(false);
 
       if (activeSavedTab === 'hot') {
-        renderSavedItems(HOT_ITEMS, false);
+        const hotCards = hotItems.map((item) => toHotSavedCard(item));
+        renderSavedItems(hotCards, hotItems.length > 0);
+        if (!hotItemsLoaded) {
+          void loadHotItems();
+        }
         return;
       }
 
-      const entries = getCachedTranscriptEntries();
+      const entries = getCachedTranslationEntries(activeReadingMode);
       if (!entries.length) {
-        renderSavedItems(HOT_ITEMS.slice(0, 2), false);
+        renderRecentEmptyState();
+        if (!hotItemsLoaded) {
+          void loadHotItems();
+        }
         return;
       }
 
@@ -3902,6 +3982,8 @@ function renderScript(): string {
       if (!hasArticleContent && !currentController) {
         syncRenderedReadingMode(activeReadingMode);
       }
+
+      renderCachedTranscriptList();
     }
 
     function playSearchReturnAnimation() {
@@ -3938,6 +4020,104 @@ function renderScript(): string {
 
       if (landingPanel) {
         landingPanel.classList.remove('search-reenter');
+      }
+    }
+
+    function returnToMainPage() {
+      cancelCurrentRequest();
+      setLoading(false);
+      setStatus('');
+      setError('');
+      showSearchView({ animateReturn: true });
+    }
+
+    function returnToSearchWithToast(title, body) {
+      setStatus('');
+      setError('');
+      resetArticle();
+      showSearchView({ animateReturn: true });
+      showToast(title, body);
+    }
+
+    function normalizeGenerateErrorPayload(payload) {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return null;
+      }
+
+      return {
+        code: typeof payload.code === 'string' ? payload.code.trim() : '',
+        message: typeof payload.message === 'string' ? payload.message.trim() : '',
+        status: typeof payload.status === 'number' ? payload.status : 0,
+      };
+    }
+
+    function getGenerateErrorToastTitle(code) {
+      if (code === 'missing_gemini_key') {
+        return '未找到 Gemini key';
+      }
+      if (code === 'missing_url' || code === 'invalid_video_id') {
+        return '链接有误';
+      }
+      if (code === 'video_unavailable') {
+        return '这个视频当前无法提取字幕';
+      }
+      if (
+        code === 'missing_captions'
+        || code === 'captions_disabled'
+        || code === 'captions_missing'
+        || code === 'missing_transcript_url'
+        || code === 'empty_transcript'
+        || code === 'empty_transcript_after_cleanup'
+      ) {
+        return '这个视频没有可用字幕';
+      }
+      if (code === 'youtube_rate_limited') {
+        return 'YouTube 当前限流';
+      }
+      if (code === 'youtube_fetch_failed' || code === 'youtube_player_failed') {
+        return '抓取 YouTube 信息失败';
+      }
+
+      return '';
+    }
+
+    function handleGenerateError(payload) {
+      const error = normalizeGenerateErrorPayload(payload);
+      if (!error || !error.code) {
+        return false;
+      }
+
+      const title = getGenerateErrorToastTitle(error.code);
+      if (!title) {
+        return false;
+      }
+
+      returnToSearchWithToast(
+        title,
+        error.message || '生成失败，请稍后重试。',
+      );
+      return true;
+    }
+
+    function parseErrorResponsePayload(response, text) {
+      const trimmed = String(text || '').trim();
+      if (!trimmed) {
+        return null;
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed);
+        return normalizeGenerateErrorPayload(parsed) || {
+          code: '',
+          message: trimmed,
+          status: response.status,
+        };
+      } catch {
+        return {
+          code: '',
+          message: trimmed,
+          status: response.status,
+        };
       }
     }
 
@@ -3979,16 +4159,9 @@ function renderScript(): string {
             requestBody.geminiApiKey = customGeminiApiKey;
           }
           const videoId = extractVideoId(requestBody.youtubeUrl || '');
-          if (usesGeminiReadingFlow(requestBody.readingMode)) {
-            const cachedTranslation = readCachedTranslation(videoId, requestBody.readingMode);
-            if (cachedTranslation && renderCachedTranslation(cachedTranslation)) {
-              showToast('已读取本地 AI 缓存', '这个视频的中文整理结果已缓存在本地，本次直接展示。');
-              return;
-            }
-          }
-          const cachedTranscript = readCachedTranscript(videoId);
-          if (cachedTranscript) {
-            requestBody.cachedTranscript = cachedTranscript;
+          if (tryRenderLocalTranslationCache(videoId, requestBody.readingMode)) {
+            suppressCacheHitToast = false;
+            return;
           }
         }
 
@@ -4003,7 +4176,15 @@ function renderScript(): string {
 
         if (!response.ok) {
           const text = await response.text();
-          throw new Error(text || '请求失败');
+          const errorPayload = parseErrorResponsePayload(response, text);
+          if (endpoint === '/api/generate' && handleGenerateError(errorPayload)) {
+            return;
+          }
+          throw new Error(
+            (errorPayload && errorPayload.message)
+            || text
+            || '请求失败',
+          );
         }
 
         await consumeSse(response);
@@ -4034,65 +4215,23 @@ function renderScript(): string {
       syncRenderedReadingMode(activeReadingMode);
       article.innerHTML = '';
       empty.classList.remove('hidden');
-      sideTitle.textContent = 'Open a YouTube video';
-      currentSideModeTag = 'VIDEO';
-      currentSourceSummary = '';
       currentSourceTitle = '';
       currentSourceAuthor = '';
       currentThumbnailUrl = '';
       currentTranslatedTitleZh = '';
       currentSummaryZh = '';
       latestCompletionMeta = null;
-      renderSideDetails();
       setArticleLoading(false);
-      sideThumb.removeAttribute('src');
-      sideThumb.alt = '';
-      sideCover.classList.remove('has-image');
       currentVideoId = '';
       if (articleWrap) {
         articleWrap.scrollTop = 0;
       }
-      sideMetaTitle.textContent = 'Video reader';
-      sideMetaSubtitle.textContent = '';
       hasArticleContent = false;
       setBusy(false, 'idle');
       syncSavedTabDefault(false);
       renderSavedTabState();
       renderCachedTranscriptList();
       setReadingProgressValue(0);
-    }
-
-    function setSideTags(tags) {
-      sideTags.innerHTML = '';
-      for (const tag of tags) {
-        const element = document.createElement('span');
-        element.className = 'story-tag';
-        element.textContent = tag;
-        sideTags.appendChild(element);
-      }
-    }
-
-    function renderSideDetails() {
-      sideSummary.textContent = currentSourceSummary;
-      sideMetaSubtitle.textContent = '';
-      setSideTags([currentSideModeTag]);
-    }
-
-    function setSideThumbnail(payload) {
-      const thumbnailUrl =
-        payload.thumbnailUrl ||
-        (payload.videoId ? 'https://i.ytimg.com/vi/' + payload.videoId + '/hqdefault.jpg' : '');
-
-      if (!thumbnailUrl) {
-        sideThumb.removeAttribute('src');
-        sideThumb.alt = '';
-        sideCover.classList.remove('has-image');
-        return;
-      }
-
-      sideThumb.src = thumbnailUrl;
-      sideThumb.alt = payload.sourceTitle ? payload.sourceTitle + ' 缩略图' : 'YouTube 缩略图';
-      sideCover.classList.add('has-image');
     }
 
     function getArticleThumbnailUrl() {
@@ -4148,7 +4287,11 @@ function renderScript(): string {
       }
 
       if (articleTitle) {
-        const displayTitle = currentTranslatedTitleZh || currentSourceTitle || articleTitle.textContent || '';
+        const displayTitle =
+          normalizeDisplayTitle(currentTranslatedTitleZh)
+          || normalizeDisplayTitle(currentSourceTitle)
+          || normalizeDisplayTitle(articleTitle.textContent)
+          || '';
         if (displayTitle) {
           articleTitle.textContent = displayTitle;
         }
@@ -4198,6 +4341,16 @@ function renderScript(): string {
       }
 
       return null;
+    }
+
+    function isGenericYoutubeTitle(value) {
+      const normalized = String(value || '').trim().toLowerCase();
+      return normalized === 'youtube' || normalized === 'youtube 视频'.toLowerCase();
+    }
+
+    function normalizeDisplayTitle(value) {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      return normalized && !isGenericYoutubeTitle(normalized) ? normalized : '';
     }
 
     function enhanceTimestampLinks(root) {
@@ -4287,38 +4440,18 @@ function renderScript(): string {
       }
 
       if (typeof payload.translatedTitleZh === 'string' && payload.translatedTitleZh.trim()) {
-        currentTranslatedTitleZh = payload.translatedTitleZh.trim();
+        currentTranslatedTitleZh = normalizeDisplayTitle(payload.translatedTitleZh);
       }
       if (typeof payload.summaryZh === 'string' && payload.summaryZh.trim()) {
         currentSummaryZh = payload.summaryZh.trim();
       }
 
-      currentSourceTitle = payload.sourceTitle;
+      currentSourceTitle = normalizeDisplayTitle(payload.sourceTitle) || currentSourceTitle;
       currentSourceAuthor = payload.sourceAuthor || '';
       currentThumbnailUrl =
         payload.thumbnailUrl ||
         (payload.videoId ? 'https://i.ytimg.com/vi/' + payload.videoId + '/hqdefault.jpg' : '');
 
-      const displayTitle = currentTranslatedTitleZh || payload.sourceTitle;
-      sideTitle.textContent = displayTitle;
-      setSideThumbnail(payload);
-      sideMetaTitle.textContent = currentSourceAuthor;
-      currentSideModeTag =
-        typeof payload.readingModeLabel === 'string' && payload.readingModeLabel.trim()
-          ? payload.readingModeLabel.trim()
-          : 'VIDEO';
-      const detailParts = [];
-      if (payload.sourceLanguage) {
-        detailParts.push(payload.sourceLanguage);
-      }
-      if (typeof payload.transcriptChunks === 'number') {
-        detailParts.push(payload.transcriptChunks + ' 段');
-      }
-      if (typeof payload.isAutoGenerated === 'boolean') {
-        detailParts.push(payload.isAutoGenerated ? '自动字幕' : '原始字幕');
-      }
-      currentSourceSummary = detailParts.join(' · ');
-      renderSideDetails();
       syncArticleHero();
     }
 
@@ -4329,7 +4462,7 @@ function renderScript(): string {
       }
 
       if (typeof payload.titleTranslationZh === 'string' && payload.titleTranslationZh.trim()) {
-        currentTranslatedTitleZh = payload.titleTranslationZh.trim();
+        currentTranslatedTitleZh = normalizeDisplayTitle(payload.titleTranslationZh);
       }
       if (typeof payload.summaryZh === 'string' && payload.summaryZh.trim()) {
         currentSummaryZh = payload.summaryZh.trim();
@@ -4349,13 +4482,37 @@ function renderScript(): string {
 
       if (incomingWarning && isGeminiHighDemandWarning(incomingWarning) && !hasStructuredInsights) {
         stopLoadingHintCycle();
-        renderSideDetails();
         setArticleLoading(true, 'Gemini 当前繁忙', 'AI 暂时不可用，正在自动回退为原始字幕。');
         showToast('Gemini 当前繁忙', 'AI 结果暂时不可用，已自动回退为原始字幕。');
       }
     }
 
-    function appendHtml(html, target) {
+    function insertDialogueHtml(html) {
+      const loading = article.querySelector('[data-dialogue-loading]');
+      if (loading) {
+        loading.insertAdjacentHTML('beforebegin', html);
+      } else {
+        article.insertAdjacentHTML('beforeend', html);
+      }
+    }
+
+    function replaceDialogueHtml(sectionId, html) {
+      if (!sectionId) {
+        insertDialogueHtml(html);
+        return;
+      }
+
+      const selector = '[data-dialogue-section-id="' + sectionId + '"]';
+      const existing = article.querySelector(selector);
+      if (existing) {
+        existing.outerHTML = html;
+        return;
+      }
+
+      insertDialogueHtml(html);
+    }
+
+    function appendHtml(html, target, sectionId) {
       if (!html) return;
 
       setArticleLoading(false);
@@ -4364,13 +4521,10 @@ function renderScript(): string {
       if (target === 'dialogue-loading') {
         setDialogueLoading(false);
         article.insertAdjacentHTML('beforeend', html);
+      } else if (target === 'dialogue-replace') {
+        replaceDialogueHtml(sectionId, html);
       } else if (target === 'dialogue') {
-        const loading = article.querySelector('[data-dialogue-loading]');
-        if (loading) {
-          loading.insertAdjacentHTML('beforebegin', html);
-        } else {
-          article.insertAdjacentHTML('beforeend', html);
-        }
+        insertDialogueHtml(html);
       } else {
         article.insertAdjacentHTML('beforeend', html);
       }
@@ -4442,6 +4596,10 @@ function renderScript(): string {
                 showToast('已读取本地缓存', '这个视频的字幕已存在于 localhost，本次优先使用本地缓存。');
               }
               suppressCacheHitToast = false;
+            } else if (payload.stage === 'cloud_transcript_cache_hit') {
+              showToast('已读取云端字幕缓存', '这个视频的字幕已缓存在 Cloudflare，本次直接复用云端结果。');
+            } else if (payload.stage === 'cloud_article_cache_hit') {
+              showToast('已读取云端内容缓存', '这个视频的成品内容已缓存在 Cloudflare，本次直接回填结果。');
             }
             if (payload.stage === 'transcript_ready') {
               setStatus('字幕已就绪，正在排版内容', { busy: true, mode: 'writing' });
@@ -4462,9 +4620,7 @@ function renderScript(): string {
               setStatus('正在写入内容', { busy: true, mode: 'writing' });
             }
           } else if (parsed.event === 'html') {
-            appendHtml(payload.html, payload.target);
-          } else if (parsed.event === 'cache') {
-            writeCachedTranscript(payload.bundle);
+            appendHtml(payload.html, payload.target, payload.sectionId);
           } else if (parsed.event === 'insights') {
             renderInsights(payload);
           } else if (parsed.event === 'warning') {
@@ -4472,6 +4628,9 @@ function renderScript(): string {
               showToast('当前片段已跳过', payload.message);
             }
           } else if (parsed.event === 'error') {
+            if (handleGenerateError(payload)) {
+              return;
+            }
             setArticleLoading(false);
             setDialogueLoading(false);
             stopLoadingHintCycle();
@@ -4496,6 +4655,7 @@ function renderScript(): string {
                 latestCompletionMeta,
               );
             }
+            void recordVideoView(latestCompletionMeta);
           }
 
           extracted = takeSseFrame(buffer);
@@ -4520,23 +4680,33 @@ function renderScript(): string {
     });
 
     cacheList.addEventListener('click', async (event) => {
-      const trigger = event.target.closest('[data-cache-video]');
+      const trigger = event.target.closest('[data-video-id], [data-youtube-url]');
       if (!trigger) {
         return;
       }
 
-      const videoId = trigger.getAttribute('data-cache-video');
-      const cachedTranscript = readCachedTranscript(videoId || '');
-      if (!cachedTranscript) {
-        renderCachedTranscriptList();
+      const buttonVideoId = trigger.getAttribute('data-video-id') || '';
+      const youtubeUrl = trigger.getAttribute('data-youtube-url')
+        || (buttonVideoId ? 'https://www.youtube.com/watch?v=' + buttonVideoId : '');
+      const videoId = buttonVideoId || extractVideoId(youtubeUrl);
+      if (!youtubeUrl) {
         return;
       }
 
-      const youtubeUrl = 'https://www.youtube.com/watch?v=' + cachedTranscript.videoId;
+      if (activeSavedTab === 'recent' && videoId && !readCachedTranslation(videoId, activeReadingMode)) {
+        renderCachedTranscriptList();
+        showToast('缓存已失效', '这条最近浏览没有当前模式的中文缓存，已移除。');
+        return;
+      }
+
       input.value = youtubeUrl;
+      syncInputMirror();
+      if (tryRenderLocalTranslationCache(videoId, activeReadingMode, { prepareUi: true })) {
+        suppressCacheHitToast = false;
+        return;
+      }
       await startStream('/api/generate', {
         youtubeUrl,
-        cachedTranscript,
         readingMode: activeReadingMode,
       }, {
         suppressCacheHitToast: true,
@@ -4546,7 +4716,7 @@ function renderScript(): string {
     savedTabs.forEach((tab) => {
       tab.addEventListener('click', () => {
         savedTabOverridden = true;
-        activeSavedTab = tab.getAttribute('data-saved-tab') || 'recent';
+        activeSavedTab = tab.getAttribute('data-saved-tab') || 'hot';
         renderSavedTabState();
         renderCachedTranscriptList();
       });
@@ -4681,13 +4851,11 @@ function renderScript(): string {
       }
     });
 
-    backButton.addEventListener('click', () => {
-      cancelCurrentRequest();
-      setLoading(false);
-      setStatus('');
-      setError('');
-      showSearchView({ animateReturn: true });
-    });
+    backButton.addEventListener('click', returnToMainPage);
+
+    if (brandButton) {
+      brandButton.addEventListener('click', returnToMainPage);
+    }
 
     if (readingProgress) {
       readingProgress.addEventListener('pointerdown', startReadingProgressDrag);
@@ -4703,6 +4871,7 @@ function renderScript(): string {
 
     window.addEventListener('resize', updateReadingProgress);
 
+    clearLegacyTranscriptCaches();
     syncSavedTabDefault(true);
     renderSavedTabState();
     renderCachedTranscriptList();
@@ -4763,10 +4932,10 @@ export function renderAppPage(): string {
       </div>
       <div class="shell" data-reader-layout="standard">
         <header class="topbar" data-topbar data-view="search">
-          <div class="brand">
+          <button type="button" class="brand" data-brand-home aria-label="返回主页">
             <img class="brand-mark" src="${BRAND_ICON_DATA_URI}" alt="" aria-hidden="true" />
             <span class="brand-copy">让视频内容跃然纸上</span>
-          </div>
+          </button>
           <nav class="topnav" aria-label="Primary">
             <button type="button" class="topnav-button" data-login-button>
               <svg class="topnav-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -4828,46 +4997,13 @@ export function renderAppPage(): string {
         <div class="app-body" data-app-body data-view="search" data-reading-mode="${DEFAULT_READING_MODE}">
           <aside class="sidebar-stack">
             <div class="saved-tabs" aria-label="Saved material filters">
-              <button type="button" class="saved-tab active" data-saved-tab="recent">最近浏览</button>
-              <button type="button" class="saved-tab" data-saved-tab="hot">热门浏览</button>
+              <button type="button" class="saved-tab" data-saved-tab="recent">最近浏览</button>
+              <button type="button" class="saved-tab active" data-saved-tab="hot">热门浏览</button>
             </div>
 
             <div class="saved-scroll">
-              <section class="story-card">
-                <div class="story-cover" data-side-cover>
-                  <img data-side-thumb loading="lazy" referrerpolicy="no-referrer" />
-                  <div class="story-cover-scrim"></div>
-                  <div class="story-tags" data-side-tags>
-                    <span class="story-tag">VIDEO</span>
-                  </div>
-                  <div class="story-content">
-                    <h2 class="story-title" data-side-title>Open a YouTube video</h2>
-                    <p class="story-summary" data-side-summary></p>
-                    <div class="story-meta">
-                      <div class="story-meta-text">
-                        <p class="story-meta-title" data-side-meta-title>Video reader</p>
-                        <p class="story-meta-subtitle" data-side-meta-subtitle></p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
               <section class="cache-card">
-                <div class="cache-list" data-cache-list>
-                  <div class="cache-item has-image">
-                    <div class="cache-thumb" data-label="VIDEO"><img src="https://i.ytimg.com/vi/xRh2sVcNXQ8/hqdefault.jpg" alt="Oceanic Currents and the Future of Energy 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
-                    <div class="cache-body">
-                      <p class="cache-item-title">Oceanic Currents and the Future of Energy</p>
-                    </div>
-                  </div>
-                  <div class="cache-item has-image">
-                    <div class="cache-thumb" data-label="VIDEO"><img src="https://i.ytimg.com/vi/pJY0mBWHPw4/hqdefault.jpg" alt="Sustainable Architecture in Coastal Areas 缩略图" loading="lazy" referrerpolicy="no-referrer" /></div>
-                    <div class="cache-body">
-                      <p class="cache-item-title">Sustainable Architecture in Coastal Areas</p>
-                    </div>
-                  </div>
-                </div>
+                <div class="cache-list" data-cache-list></div>
               </section>
             </div>
           </aside>

@@ -3,5 +3,12 @@ main = "src/index.ts"
 compatibility_date = "2026-03-31"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+SUPADATA_TRANSCRIPT_MODE = "auto"
+
 [observability]
 enabled = true
+
+[[routes]]
+pattern = "ailin.uk"
+custom_domain = true

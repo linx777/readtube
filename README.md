@@ -28,11 +28,11 @@ npm run dev
 
 ```bash
 GEMINI_API_KEY=your_google_ai_studio_key
-GEMINI_INSIGHTS_MODEL=gemini-3.1-pro-preview
+GEMINI_INSIGHTS_MODEL=gemini-3.1-flash-lite-preview
 GEMINI_DIALOGUE_MODEL=gemini-3.1-flash-lite-preview
 ```
 
-默认情况下，第一轮摘要/说话人使用 `gemini-3.1-pro-preview`，第二轮逐片中文对话使用 `gemini-3.1-flash-lite-preview`。`GEMINI_MODEL` 仍可作为第一轮的兼容覆盖项。
+默认情况下，第一轮摘要/说话人使用 `gemini-3.1-flash-lite-preview`，第二轮逐片中文对话使用 `gemini-3.1-flash-lite-preview`。`GEMINI_MODEL` 仍可作为第一轮的兼容覆盖项。
 
 3. 打开页面并粘贴一个带字幕的 YouTube 视频链接。
 
@@ -56,6 +56,27 @@ npx wrangler login
 npm run deploy
 ```
 
+如果你要启用 Cloudflare 侧内容缓存和“热门浏览”，还需要额外创建一个 KV namespace 和一个 D1 数据库：
+
+```bash
+npx wrangler kv namespace create CONTENT_CACHE
+npx wrangler d1 create xvc-hot
+npx wrangler d1 execute xvc-hot --file=./migrations/0001_popular_videos.sql
+```
+
+然后把返回的 id 填进 `wrangler.toml`，例如：
+
+```toml
+[[kv_namespaces]]
+binding = "CONTENT_CACHE"
+id = "<your-kv-namespace-id>"
+
+[[d1_databases]]
+binding = "HOT_DB"
+database_name = "xvc-hot"
+database_id = "<your-d1-database-id>"
+```
+
 部署成功后，默认会得到一个类似下面的地址：
 
 ```text
@@ -67,4 +88,5 @@ https://xvc.<your-subdomain>.workers.dev
 - 页面和 API 都由同一个 Worker 提供
 - 生成结果通过 `POST /api/generate` 的 SSE 事件流返回
 - `详细版` 会在 transcript 之外，额外请求 Gemini 返回结构化 JSON：`summary` 和 `speakers`
-- 当前版本不做持久化历史记录
+- 浏览器本地仍保留 `localStorage` 缓存，Cloudflare KV 负责跨用户复用 transcript / 成品内容
+- “热门浏览”通过 D1 记录浏览次数，并由 `GET /api/hot` 提供热门列表
