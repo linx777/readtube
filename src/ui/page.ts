@@ -1,4 +1,7 @@
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
+const HOT_CARD_PREFLIGHT_DELAY_MS = 700;
+const HOT_CARD_LOADING_TITLE = '正在打开热门内容';
+const HOT_CARD_LOADING_BODY = '我们正在为您加载已准备好的精选内容，请稍等片刻。';
 const READING_MODE_OPTIONS = [
   { value: 'quick', label: '速读版', note: '（即将上线）', disabled: true },
   { value: 'full', label: '详细版', note: '', disabled: false },
@@ -2937,6 +2940,9 @@ function renderScript(): string {
       ],
     };
     const GEMINI_LOADING_HINT_INTERVAL_MS = 2200;
+    const HOT_CARD_PREFLIGHT_DELAY_MS = ${JSON.stringify(HOT_CARD_PREFLIGHT_DELAY_MS)};
+    const HOT_CARD_LOADING_TITLE = ${JSON.stringify(HOT_CARD_LOADING_TITLE)};
+    const HOT_CARD_LOADING_BODY = ${JSON.stringify(HOT_CARD_LOADING_BODY)};
     const form = document.querySelector('[data-form]');
     const input = document.querySelector('[data-input]');
     const inputMirror = document.querySelector('[data-input-mirror]');
@@ -4222,6 +4228,17 @@ function renderScript(): string {
       updateReadingProgress();
     }
 
+    function delay(ms) {
+      const duration = Number(ms);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        setTimeout(resolve, duration);
+      });
+    }
+
     function cancelCurrentRequest() {
       if (!currentController) {
         return;
@@ -4238,8 +4255,12 @@ function renderScript(): string {
       resetArticle();
       showArticleView();
       setStatus('准备开始...', { busy: true, mode: 'fetching' });
-      setArticleLoading(true, '正在生成您需要的内容', '我们正在连接 YouTube 并准备内容，请稍等片刻。');
+      const loadingTitle = (options && options.loadingTitle) || '正在生成您需要的内容';
+      const loadingBody = (options && options.loadingBody) || '我们正在连接 YouTube 并准备内容，请稍等片刻。';
+      setArticleLoading(true, loadingTitle, loadingBody);
       suppressCacheHitToast = Boolean(options && options.suppressCacheHitToast);
+      const skipLocalCache = Boolean(options && options.skipLocalCache);
+      const preflightDelayMs = Math.max(0, Number(options && options.preflightDelayMs) || 0);
 
       cancelCurrentRequest();
 
@@ -4248,13 +4269,20 @@ function renderScript(): string {
       setLoading(true);
 
       try {
+        if (preflightDelayMs > 0) {
+          await delay(preflightDelayMs);
+          if (currentController !== requestController || requestController.signal.aborted) {
+            return;
+          }
+        }
+
         const requestBody = body ? { ...body } : {};
         if (endpoint === '/api/generate') {
           if (customGeminiApiKey) {
             requestBody.geminiApiKey = customGeminiApiKey;
           }
           const videoId = extractVideoId(requestBody.youtubeUrl || '');
-          if (tryRenderLocalTranslationCache(videoId, requestBody.readingMode)) {
+          if (!skipLocalCache && tryRenderLocalTranslationCache(videoId, requestBody.readingMode)) {
             suppressCacheHitToast = false;
             return;
           }
@@ -4799,7 +4827,8 @@ function renderScript(): string {
 
       input.value = youtubeUrl;
       syncInputMirror();
-      if (tryRenderLocalTranslationCache(videoId, activeReadingMode, { prepareUi: true })) {
+      const skipLocalCache = activeSavedTab === 'hot';
+      if (!skipLocalCache && tryRenderLocalTranslationCache(videoId, activeReadingMode, { prepareUi: true })) {
         suppressCacheHitToast = false;
         return;
       }
@@ -4807,7 +4836,11 @@ function renderScript(): string {
         youtubeUrl,
         readingMode: activeReadingMode,
       }, {
+        loadingTitle: skipLocalCache ? HOT_CARD_LOADING_TITLE : '',
+        loadingBody: skipLocalCache ? HOT_CARD_LOADING_BODY : '',
+        preflightDelayMs: skipLocalCache ? HOT_CARD_PREFLIGHT_DELAY_MS : 0,
         suppressCacheHitToast: true,
+        skipLocalCache,
       });
     });
 

@@ -1,5 +1,7 @@
 import type { TranscriptBundle } from './youtube';
 import { isTranscriptBundle } from './youtube';
+import { listCuratedHotVideoItems } from '../data/curated-hot-content';
+import { getCuratedGeneratedArticle } from '../data/curated-hot-articles';
 
 const TRANSCRIPT_CACHE_VERSION = 2;
 const ARTICLE_CACHE_VERSION = 5;
@@ -175,6 +177,17 @@ export async function readCachedGeneratedArticle(
   videoId: string,
   readingMode: string,
 ): Promise<CachedGeneratedArticle | null> {
+  const curatedArticle = videoId && readingMode
+    ? getCuratedGeneratedArticle(videoId, readingMode)
+    : null;
+
+  if (curatedArticle) {
+    return {
+      articleHtml: curatedArticle.articleHtml,
+      meta: curatedArticle.meta,
+    };
+  }
+
   if (!env.CONTENT_CACHE || !videoId || !readingMode) {
     return null;
   }
@@ -238,11 +251,20 @@ export async function listHotVideos(
   env: ContentCacheBindings,
   limit?: number,
 ): Promise<HotVideoItem[]> {
-  if (!env.HOT_DB) {
-    return [];
-  }
-
   const normalizedLimit = normalizeHotLimit(limit);
+  const curatedItems = listCuratedHotVideoItems().map((item) => ({
+    videoId: item.videoId,
+    title: item.title,
+    author: item.author,
+    thumbnailUrl: item.thumbnailUrl,
+    youtubeUrl: item.youtubeUrl,
+    viewCount: item.viewCount,
+    updatedAt: item.updatedAt,
+  }));
+
+  if (!env.HOT_DB) {
+    return curatedItems.slice(0, normalizedLimit);
+  }
 
   try {
     const result = await env.HOT_DB
@@ -254,15 +276,43 @@ export async function listHotVideos(
       )
       .all<HotVideoRow>();
 
-    return (result.results ?? [])
+    const databaseItems = (result.results ?? [])
       .map((row) => mapHotVideoRow(row))
       .filter((item): item is HotVideoItem => Boolean(item));
+    const mergedItems = new Map<string, HotVideoItem>();
+
+    for (const item of curatedItems) {
+      mergedItems.set(item.videoId, item);
+    }
+
+    for (const item of databaseItems) {
+      const existing = mergedItems.get(item.videoId);
+      if (!existing) {
+        mergedItems.set(item.videoId, item);
+        continue;
+      }
+
+      mergedItems.set(item.videoId, {
+        ...existing,
+        viewCount: item.viewCount,
+        updatedAt: Math.max(existing.updatedAt, item.updatedAt),
+        youtubeUrl: item.youtubeUrl || existing.youtubeUrl,
+      });
+    }
+
+    return [...mergedItems.values()]
+      .sort((left, right) => (
+        right.viewCount - left.viewCount
+        || right.updatedAt - left.updatedAt
+        || left.title.localeCompare(right.title)
+      ))
+      .slice(0, normalizedLimit);
   } catch (error) {
     console.error('[storage] hot_list_query_failed', {
       limit: normalizedLimit,
       error: error instanceof Error ? error.message : error,
     });
-    return [];
+    return curatedItems.slice(0, normalizedLimit);
   }
 }
 

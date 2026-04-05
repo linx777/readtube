@@ -39,6 +39,9 @@ vi.mock('../src/services/gemini', async () => {
 
 import { handleGenerateRoute } from '../src/routes/generate';
 
+const TEST_VIDEO_ID = 'abc123xyz90';
+const TEST_VIDEO_URL = `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`;
+
 function createBundle(overrides: Partial<TranscriptBundle> = {}): TranscriptBundle {
   const chunks = overrides.chunks ?? [
     { start: 0, end: 15, text: 'Opening line' },
@@ -46,7 +49,7 @@ function createBundle(overrides: Partial<TranscriptBundle> = {}): TranscriptBund
   ];
 
   return {
-    videoId: 'xRh2sVcNXQ8',
+    videoId: TEST_VIDEO_ID,
     sourceTitle: 'Test title',
     sourceAuthor: 'Test author',
     channelId: 'channel',
@@ -114,6 +117,63 @@ describe('handleGenerateRoute', () => {
     translateTranscriptSectionToZhMock.mockReset();
   });
 
+  it('replays curated hot content without fetching transcripts or calling Gemini', async () => {
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {};
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
+    expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
+    expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
+    expect(body).toContain('AI发展展望');
+    expect(body).toContain('一个主要的质疑是，虽然收入巨大，但支出也在同步增长，人们在讨论中忽略了什么？');
+    expect(body).toContain('AI行业主要有消费者和企业/基础设施两种商业模式。');
+    expect(body).toContain('"stage":"complete"');
+    expect(body).toContain('event: done');
+  });
+
+  it('prefers cached or hot content over Gemini even with a custom Gemini key', async () => {
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+        geminiApiKey: 'custom-key',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {};
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
+    expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
+    expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
+    expect(body).toContain('event: done');
+  });
+
   it('passes Supadata transcript provider options to the fetcher', async () => {
     const bundle = createBundle();
 
@@ -153,7 +213,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'quick',
       }),
       headers: {
@@ -173,7 +233,7 @@ describe('handleGenerateRoute', () => {
 
     expect(fetchTranscriptBundleMock).toHaveBeenCalledTimes(1);
     expect(fetchTranscriptBundleMock).toHaveBeenCalledWith(
-      'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+      TEST_VIDEO_URL,
       expect.any(Object),
       request.signal,
       {
@@ -243,7 +303,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -353,7 +413,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -449,7 +509,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -531,7 +591,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -613,7 +673,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -697,7 +757,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -784,7 +844,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -875,7 +935,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -962,7 +1022,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -1083,7 +1143,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
@@ -1161,7 +1221,7 @@ describe('handleGenerateRoute', () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
       body: JSON.stringify({
-        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        youtubeUrl: TEST_VIDEO_URL,
         readingMode: 'full',
       }),
       headers: {
