@@ -3306,6 +3306,15 @@ function renderScript(): string {
       }
     }
 
+    function getDialogueLoadingHintOffset(block, fallbackOffset) {
+      if (!block) {
+        return fallbackOffset;
+      }
+
+      const parsedOffset = Number.parseInt(block.dataset.loadingHintOffset || '', 10);
+      return Number.isFinite(parsedOffset) ? parsedOffset : fallbackOffset;
+    }
+
     function applyLoadingHint() {
       const hint = getLoadingHintEntry(loadingHintStage, loadingHintIndex);
       if (!hint) {
@@ -3323,9 +3332,11 @@ function renderScript(): string {
 
       const existing = article.querySelector('[data-dialogue-loading]');
       if (existing) {
+        const globalHintOffset = getDialogueLoadingHintOffset(existing, 0);
+        const globalHint = getLoadingHintEntry(loadingHintStage, loadingHintIndex + globalHintOffset) || hint;
         applyDialogueLoadingHintToBlock(
           existing,
-          hint,
+          globalHint,
           loadingHintFallbackTitle,
           loadingHintFallbackBody,
         );
@@ -3333,7 +3344,8 @@ function renderScript(): string {
 
       const sectionLoadingBlocks = article.querySelectorAll('.dialogue-section-block .dialogue-loading-block');
       sectionLoadingBlocks.forEach((block, index) => {
-        const sectionHint = getLoadingHintEntry(loadingHintStage, loadingHintIndex + index + 1) || hint;
+        const sectionHintOffset = getDialogueLoadingHintOffset(block, index + 1);
+        const sectionHint = getLoadingHintEntry(loadingHintStage, loadingHintIndex + sectionHintOffset) || hint;
         applyDialogueLoadingHintToBlock(
           block,
           sectionHint,
@@ -3529,6 +3541,29 @@ function renderScript(): string {
       }
     }
 
+    function cachedTranslationNeedsRefresh(cached) {
+      if (!cached || !cached.meta || typeof cached.meta !== 'object') {
+        return false;
+      }
+
+      return (
+        cached.meta.translationNeedsRefresh === true
+        || cached.meta.geminiTranslationComplete === false
+        || (
+          typeof cached.articleHtml === 'string'
+          && cached.articleHtml.includes('<span class="section-title">原文片段</span>')
+        )
+      );
+    }
+
+    function shouldPersistLocalTranslation(meta) {
+      if (!meta || typeof meta !== 'object') {
+        return false;
+      }
+
+      return meta.geminiTranslationComplete === true || meta.translationNeedsRefresh === true;
+    }
+
     function writeCachedTranslation(videoId, readingMode, articleHtml, meta) {
       if (!videoId || !articleHtml || !meta) {
         return;
@@ -3582,6 +3617,10 @@ function renderScript(): string {
 
       const cachedTranslation = readCachedTranslation(videoId, readingMode);
       if (!cachedTranslation) {
+        return false;
+      }
+
+      if (cachedTranslationNeedsRefresh(cachedTranslation)) {
         return false;
       }
 
@@ -4581,6 +4620,9 @@ function renderScript(): string {
         replaceDialogueHtml(sectionId, html);
       } else if (target === 'dialogue') {
         insertDialogueHtml(html);
+        if (sectionId) {
+          setDialogueLoading(false);
+        }
       } else {
         article.insertAdjacentHTML('beforeend', html);
       }
@@ -4700,7 +4742,7 @@ function renderScript(): string {
             if (
               latestCompletionMeta &&
               usesGeminiReadingFlow(latestCompletionMeta.readingMode) &&
-              latestCompletionMeta.geminiTranslationComplete === true &&
+              shouldPersistLocalTranslation(latestCompletionMeta) &&
               latestCompletionMeta.videoId &&
               article.innerHTML.trim()
             ) {

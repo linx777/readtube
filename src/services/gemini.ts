@@ -91,7 +91,7 @@ const QUICK_TRANSCRIPT_SECTIONS_SCHEMA = {
     sections: {
       type: 'array',
       description:
-        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese thematic subtitle suitable as a quick-summary heading, and a concise Simplified Chinese summary under 15 Chinese characters when possible.',
+        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese thematic subtitle suitable as a quick-summary heading, and a concise Simplified Chinese summary under 10 Chinese characters when possible.',
       minItems: 1,
       maxItems: 12,
       items: {
@@ -115,7 +115,7 @@ const FULL_TRANSCRIPT_SECTION_BOUNDARIES_SCHEMA = {
     sections: {
       type: 'array',
       description:
-        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese subtitle, and a concise Simplified Chinese summary under 15 Chinese characters when possible.',
+        'A contiguous semantic outline for the full transcript. Each section must include only startLabel, endLabel, a compact four-character-style Simplified Chinese subtitle, and a concise Simplified Chinese summary under 10 Chinese characters when possible.',
       minItems: 2,
       maxItems: 12,
       items: {
@@ -136,36 +136,20 @@ const FULL_TRANSCRIPT_SECTION_BOUNDARIES_SCHEMA = {
 const TRANSCRIPT_DIALOGUE_SCHEMA = {
   type: 'object',
   properties: {
-    topicTitleZh: {
+    sectionTitleZh: {
       type: 'string',
       description:
         'A higher-level thematic Simplified Chinese heading for the section, suitable as a quick-summary title before the dialogue. Prefer a compact four-character-style heading when possible.',
     },
-    topicSummaryZh: {
+    sectionSummaryZh: {
       type: 'string',
       description:
-        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the section and stays under 15 Chinese characters when possible.',
+        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the section and must stay under 10 Chinese characters.',
     },
-    turns: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          timestamp: { type: 'string' },
-          speaker: {
-            type: 'string',
-            description:
-              'Speaker name for the turn. Return an empty string when no speaker attribution should be shown.',
-          },
-          textZh: { type: 'string' },
-        },
-        required: ['timestamp', 'speaker', 'textZh'],
-      },
-    },
-    groups: {
+    topics: {
       type: 'array',
       description:
-        'Ordered dialogue groups inside the section. Each group should correspond to one main question-answer exchange or one coherent subtopic inside the larger section.',
+        'Ordered topics inside the section. Each topic must correspond to exactly one question and one or more answer turns.',
       minItems: 1,
       maxItems: 8,
       items: {
@@ -176,24 +160,44 @@ const TRANSCRIPT_DIALOGUE_SCHEMA = {
             description:
               'A concise Simplified Chinese mini-title for this question-answer group or subtopic.',
           },
-          turns: {
+          question: {
+            type: 'object',
+            properties: {
+              timestamp: { type: 'string' },
+              speaker: {
+                type: 'string',
+                description:
+                  'Speaker name for the question turn. Return an empty string when no speaker attribution should be shown.',
+              },
+              content: { type: 'string' },
+            },
+            required: ['timestamp', 'speaker', 'content'],
+          },
+          answers: {
             type: 'array',
+            description:
+              'One or more translated answer turns for this topic. If multiple people answer the same question, return one answer object per speaker and keep each speaker distinct.',
+            minItems: 1,
             items: {
               type: 'object',
               properties: {
                 timestamp: { type: 'string' },
-                speaker: { type: 'string' },
-                textZh: { type: 'string' },
+                speaker: {
+                  type: 'string',
+                  description:
+                    'Speaker name for this answer turn. Return an empty string when no speaker attribution should be shown.',
+                },
+                content: { type: 'string' },
               },
-              required: ['timestamp', 'speaker', 'textZh'],
+              required: ['timestamp', 'speaker', 'content'],
             },
           },
         },
-        required: ['topicTitleZh', 'turns'],
+        required: ['topicTitleZh', 'question', 'answers'],
       },
     },
   },
-  required: ['topicTitleZh', 'topicSummaryZh', 'turns', 'groups'],
+  required: ['sectionTitleZh', 'sectionSummaryZh', 'topics'],
 } as const;
 
 const QUICK_SECTION_QA_SCHEMA = {
@@ -207,7 +211,7 @@ const QUICK_SECTION_QA_SCHEMA = {
     topicSummaryZh: {
       type: 'string',
       description:
-        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the exchange and stays under 15 Chinese characters when possible.',
+        'One concise Simplified Chinese summary sentence that captures the broader point or takeaway of the exchange and must stay under 10 Chinese characters.',
     },
     question: { type: 'string' },
     answer: { type: 'string' },
@@ -273,6 +277,8 @@ export interface TranscriptDialogueTurn {
 
 export interface TranscriptDialogueGroup {
   topicTitleZh: string;
+  question?: TranscriptDialogueTurn;
+  answers?: TranscriptDialogueTurn[];
   turns: TranscriptDialogueTurn[];
 }
 
@@ -281,6 +287,7 @@ export interface TranscriptDialogueSliceResult {
   turns: TranscriptDialogueTurn[];
   groups: TranscriptDialogueGroup[];
   model: string;
+  usedFallback?: boolean;
 }
 
 export interface TranscriptSectionsResult {
@@ -313,6 +320,42 @@ const MANUAL_SECTION_SUMMARY_PATTERN = /^Transcript content from .+\.$/i;
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function looksQuestionLikeText(value: string): boolean {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (/[?？]$/.test(normalized)) {
+    return true;
+  }
+
+  if (/^(who|what|when|where|why|how|which|whether|is|are|am|was|were|do|does|did|can|could|should|would|will|have|has|had)\b/i.test(normalized)) {
+    return true;
+  }
+
+  return /(什么|为什么|为何|如何|是否|谁|哪(里|个|些|种)?|几时|多久|吗|呢)/.test(normalized);
+}
+
+function containsSingleQuestionPrompt(value: string): boolean {
+  const normalized = normalizeWhitespace(value);
+  if (!looksQuestionLikeText(normalized)) {
+    return false;
+  }
+
+  const questionMarks = normalized.match(/[?？]/g);
+  return !questionMarks || questionMarks.length <= 1;
+}
+
+function hasDistinctAnswerSpeakers(answers: TranscriptDialogueTurn[]): boolean {
+  if (answers.length <= 1) {
+    return true;
+  }
+
+  const normalizedSpeakers = answers.map((answer) => answer.speaker.trim().toLowerCase()).filter(Boolean);
+  return normalizedSpeakers.length === answers.length && new Set(normalizedSpeakers).size === answers.length;
 }
 
 function normalizeChineseTitle(value: string): string {
@@ -467,7 +510,7 @@ function buildBaseTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     '7. Never assume the content is a Q&A unless the transcript actually supports that structure.',
     '8. Keep section summaries concise and factual.',
     '9. Make each section subtitle exactly 4 Chinese characters when possible.',
-    '10. Keep each section summary under 15 Chinese characters when possible.',
+    '10. Keep each section summary under 10 Chinese characters when possible.',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,
     `Author: ${bundle.sourceAuthor}`,
@@ -536,7 +579,7 @@ function buildQuickTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
     '13. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
     '14. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
     '15. Write all section summaries in natural Simplified Chinese. Keep them very concise and factual.',
-    '16. Each summary should be a single short sentence that captures the broader point of the section and stays under 15 Chinese characters when possible.',
+    '16. Each summary should be a single short sentence that captures the broader point of the section and must stay under 10 Chinese characters.',
     '17. Do not return transcript text.',
     '18. Must Do not split a question into one group and its answer into another',
     '',
@@ -551,12 +594,22 @@ function buildQuickTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
 }
 
 const EXACTLY_ONE_QA_RULES = [
-  '- HARD REQUIREMENT FOR EVERY TOPIC/ Q&A GROUP: Each topic MUST contain exactly one question and exactly one answer.',
+  '- HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.',
   '- NO EXCEPTIONS: no more, no less.',
   '- If only an answer is present, generate a corresponding question.',
-  '- If only a question is present, remove this topic and question',
-  '- HARD REQUIREMENT FOR multiple questions or multiple answers appear, combine all awnser together and generate a enerate a corresponding question. so the final topic/group still has exactly one question and exactly one answer.',
-  '- If, after processing, a topic/group still does not contain exactly one question and one answer, just remove this topic and content in the reponse',
+  '- If only a question is present, remove it.',
+  '- If multiple questions or multiple answers appear, combine all answers together and generate a corresponding question so the final topic/group still has exactly one question and exactly one answer.',
+  '- If, after processing, a topic/group still does not contain exactly one question and one answer, discard that topic/group entirely.',
+];
+
+const DIALOGUE_QA_RULES = [
+  '- HARD REQUIREMENT FOR EVERY TOPIC: Each topic MUST contain exactly one question.',
+  '- Each topic MUST contain one or more answers in answers.',
+  '- If only answers are present, generate one corresponding question.',
+  '- If multiple people answer the same question, return multiple answer objects in answers, one per speaker.',
+  '- When answers contains multiple items, every answer must use a different non-empty speaker name.',
+  '- Merge same-speaker continuation lines into one answer object instead of splitting them.',
+  '- If, after processing, a topic still does not contain one valid question and at least one valid answer, discard that topic entirely.',
 ];
 
 function buildFullTranscriptSectionsPrompt(bundle: TranscriptBundle): string {
@@ -595,7 +648,7 @@ function buildFullTranscriptSectionBoundariesPrompt(bundle: TranscriptBundle): s
     '11. Make the subtitle still make sense when shown alone to a reader who has not seen the transcript.',
     '12. Use the same heading logic for all video types: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
     '13. Keep section summaries concise and factual.',
-    '14. Keep each summary under 15 Chinese characters when possible.',
+    '14. Keep each summary under 10 Chinese characters.',
     '15. Must Do not split a question into one group and its answer into another',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,
@@ -623,7 +676,9 @@ function buildBaseTranscriptDialoguePrompt(
     'Convert the following transcript section into direct Simplified Chinese speaker-attributed dialogue and return JSON only.',
     'These rules must generalize across interviews, podcasts, lectures, explainers, tutorials, news reports, documentaries, monologues, vlogs, speeches, and mixed-format videos.',
     'Goal:',
-    '- Produce lines shaped like [name]: [words], with timestamps kept separately in JSON.',
+    '- Return one section title, one section summary, and an ordered topics array.',
+    '- Each topic must contain exactly one question object and one or more answer objects in answers.',
+    '- Each question and each answers item must include timestamp, speaker, and content.',
     '',
     'Rules:',
     '- Translate faithfully into natural Simplified Chinese.',
@@ -639,35 +694,60 @@ function buildBaseTranscriptDialoguePrompt(
     '- Do not hallucinate extra content.',
     '- Merge adjacent transcript lines into a single turn when they clearly belong to one speaker.',
     '- Preserve the original order of ideas.',
-    '- Keep each turn concise but complete.',
+    '- Keep each question concise, but keep each answer detailed and complete.',
+    '- Do not over-compress answers into short summaries or slogans.',
+    '- Preserve the answer detail from the source: key reasoning, examples, evidence, comparisons, qualifiers, and concrete claims should stay in topic.answers[*].content whenever present.',
+    '- topic.answers[*].content may be multiple sentences when needed to retain the original detail and words.',
     '- Use the timestamp of the first transcript line in each turn.',
-    '- Return topicTitleZh as a concise higher-level Simplified Chinese heading that works as a quick summary before the dialogue.',
-    '- Make topicTitleZh capture the broader theme, stance, tension, or takeaway of the section instead of merely paraphrasing the first question line.',
-    '- Make topicTitleZh work for any video type: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
-    '- topicTitleZh should still make sense when shown alone to a reader who has not seen the transcript.',
-    '- Keep topicTitleZh to exactly 4 Chinese characters when possible.',
+    '- Return sectionTitleZh as a concise higher-level Simplified Chinese heading that works as a quick summary before the dialogue.',
+    '- Make sectionTitleZh capture the broader theme, stance, tension, or takeaway of the section instead of merely paraphrasing the first question line.',
+    '- Make sectionTitleZh work for any video type: for conversations, summarize the exchange theme; for non-conversations, summarize the main concept, claim, lesson, event, or takeaway.',
+    '- sectionTitleZh should still make sense when shown alone to a reader who has not seen the transcript.',
+    '- Keep sectionTitleZh to exactly 4 Chinese characters when possible.',
     '- Avoid generic labels and avoid copying a transcript line verbatim when a better abstraction is possible.',
-    '- Return topicSummaryZh as one concise natural Simplified Chinese summary sentence for the broader point of the section.',
-    '- Keep topicSummaryZh under 15 Chinese characters when possible.',
-    '- Also return groups for the smaller exchanges inside this larger section.',
-    '- Keep the section-level topicTitleZh/topicSummaryZh as the big chapter title and summary for the whole section.',
-    '- Each item in groups must represent exactly one main question and exactly one answer pair. If no question is found, generate one according to the answer.',
-    ...EXACTLY_ONE_QA_RULES,
-    '- For conversation content, create a new group for each distinct question and its direct answer whenever possible.',
-    '- Do not lump multiple distinct questions into one group just because they share a theme.',
-    '- For non-conversation content, group by coherent subtopic or idea block.',
-    '- Each group must include a concise topicTitleZh under 10 words.',
-    '- Each group must include the translated turns that belong to that group only, in original order.',
-    '- Every translated turn must appear in exactly one group.',
-    '- FINAL CHECK BEFORE RETURNING: delete any group that does not end with exactly one question and exactly one answer.',
-    '- Must Do not split a question into one group and its answer into another',
+    '- Return sectionSummaryZh as one concise natural Simplified Chinese summary sentence for the broader point of the section.',
+    '- Keep sectionSummaryZh under 10 Chinese characters.',
+    '- Also return topics for the smaller exchanges inside this larger section.',
+    '- Keep the section-level sectionTitleZh/sectionSummaryZh as the big chapter title and summary for the whole section.',
+    '- Each item in topics must represent exactly one main question with one or more direct answers. If no question is found, generate one according to the answers.',
+    '- Each topic must include a concise topicTitleZh under 10 words.',
+    '- Each topic.question must be a single translated question turn with its speaker and timestamp.',
+    '- topic.question.content must be written as exactly one explicit question sentence, not multiple stitched questions.',
+    '- Each item in topic.answers must be a single translated answer turn with its speaker and timestamp.',
+    '- Each topic.answers[i].content must be written as one detailed answer block for that speaker, not a short takeaway line.',
+    '- If multiple speakers answer the same question, keep them as separate items in topic.answers instead of merging them into one speaker turn.',
+    '- When topic.answers has multiple items, each answer must have a different non-empty speaker name.',
+    '- sectionSummaryZh is the only place for a short summary; topic.answers[*].content should preserve the substantive detail of the original answer.',
+    '- topic.question.content and topic.answers[*].content must stay consistent with the transcript lines assigned to that topic.',
+    ...DIALOGUE_QA_RULES,
+    '- For conversation content, create a new topic for each distinct question and its direct answer whenever possible.',
+    '- Do not lump multiple distinct questions into one topic just because they share a theme.',
+    '- For non-conversation content, create a topic for each coherent subtopic or idea block.',
+    '- Every translated idea in the section must appear in exactly one topic question or one of its answers.',
+    '- FINAL CHECK BEFORE RETURNING: delete any topic that does not end with exactly one question and at least one answer.',
+    '- Must Do not split a question into one topic and its answers into another',
     ...(usesManualPlaceholderCopy
       ? [
           '- The provided section subtitle and summary are generic placeholder labels created from a fixed time slice.',
           '- Do not literally translate those placeholder labels.',
-          '- Instead, write a fresh concise topicTitleZh and a fresh concise topicSummaryZh based on the actual transcript content in this section.',
+          '- Instead, write a fresh concise sectionTitleZh and a fresh concise sectionSummaryZh based on the actual transcript content in this section.',
         ]
       : []),
+    '',
+    'Return JSON with this exact shape:',
+    '{',
+    '  "sectionTitleZh": "...",',
+    '  "sectionSummaryZh": "...",',
+    '  "topics": [',
+    '    {',
+    '      "topicTitleZh": "...",',
+    '      "question": { "timestamp": "...", "speaker": "...", "content": "..." },',
+    '      "answers": [',
+    '        { "timestamp": "...", "speaker": "...", "content": "..." }',
+    '      ]',
+    '    }',
+    '  ]',
+    '}',
     '',
     `Original YouTube Title: ${getPromptSourceTitle(bundle)}`,
     `Chinese Title: ${titleTranslationZh || 'N/A'}`,
@@ -717,7 +797,7 @@ function buildQuickSectionQaPrompt(
     '- Keep topicTitleZh to exactly 4 Chinese characters when possible.',
     '- Avoid generic labels and avoid copying a transcript line verbatim when a better abstraction is possible.',
     '- Return topicSummaryZh as one concise Simplified Chinese summary sentence for the broader point of the exchange.',
-    '- Keep topicSummaryZh under 15 Chinese characters when possible.',
+    '- Keep topicSummaryZh under 10 Chinese characters.',
     '- FINAL CHECK BEFORE RETURNING: delete the section result if it does not end with exactly one question and exactly one answer.',
     '- Must Do not split a question into one group and its answer into another',
     '',
@@ -941,11 +1021,171 @@ function normalizeQuickSectionQaPayload(
   };
 }
 
-function normalizeDialogueTurnRecord(item: Record<string, unknown>): TranscriptDialogueTurn {
+function normalizeDialogueTopicTurnRecord(item: unknown): TranscriptDialogueTurn {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    return {
+      timestamp: '',
+      speaker: '',
+      textZh: '',
+    };
+  }
+
+  const record = item as Record<string, unknown>;
   return {
-    timestamp: typeof item.timestamp === 'string' ? normalizeWhitespace(item.timestamp) : '',
-    speaker: typeof item.speaker === 'string' ? normalizeWhitespace(item.speaker) : '',
-    textZh: typeof item.textZh === 'string' ? normalizeWhitespace(item.textZh) : '',
+    timestamp: typeof record.timestamp === 'string' ? normalizeWhitespace(record.timestamp) : '',
+    speaker: typeof record.speaker === 'string' ? normalizeWhitespace(record.speaker) : '',
+    textZh: typeof record.content === 'string'
+      ? normalizeWhitespace(record.content)
+      : (typeof record.textZh === 'string' ? normalizeWhitespace(record.textZh) : ''),
+  };
+}
+
+function normalizeDialogueTurnArray(items: unknown): TranscriptDialogueTurn[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => normalizeDialogueTopicTurnRecord(item))
+    .filter((turn) => turn.timestamp && turn.textZh);
+}
+
+function readDialogueSectionTitleZh(record: Record<string, unknown>): string {
+  return typeof record.sectionTitleZh === 'string'
+    ? normalizeWhitespace(record.sectionTitleZh)
+    : (typeof record.topicTitleZh === 'string'
+      ? normalizeWhitespace(record.topicTitleZh)
+      : (typeof record.subtitleZh === 'string' ? normalizeWhitespace(record.subtitleZh) : ''));
+}
+
+function readDialogueSectionSummaryZh(record: Record<string, unknown>): string {
+  return typeof record.sectionSummaryZh === 'string'
+    ? normalizeWhitespace(record.sectionSummaryZh)
+    : (typeof record.topicSummaryZh === 'string'
+      ? normalizeWhitespace(record.topicSummaryZh)
+      : (typeof record.summaryZh === 'string' ? normalizeWhitespace(record.summaryZh) : ''));
+}
+
+function resolveDialogueSectionTitleZh(
+  record: Record<string, unknown>,
+  section: TranscriptSection,
+): string {
+  const payloadTitle = readDialogueSectionTitleZh(record);
+
+  return payloadTitle
+    || normalizeWhitespace(section.topicTitleZh ?? '')
+    || normalizeWhitespace(section.subtitleZh ?? '')
+    || normalizeWhitespace(section.subtitle);
+}
+
+function resolveDialogueSectionSummaryZh(
+  record: Record<string, unknown>,
+  section: TranscriptSection,
+): string {
+  const payloadSummary = readDialogueSectionSummaryZh(record);
+
+  return payloadSummary
+    || normalizeWhitespace(section.topicSummaryZh ?? '')
+    || normalizeWhitespace(section.summaryZh ?? '')
+    || normalizeWhitespace(section.summary);
+}
+
+function normalizeRelaxedDialogueTopicTitle(record: Record<string, unknown>, index: number): string {
+  const explicitTitle = typeof record.topicTitleZh === 'string'
+    ? normalizeWhitespace(record.topicTitleZh)
+    : (typeof record.subtitleZh === 'string' ? normalizeWhitespace(record.subtitleZh) : '');
+
+  return explicitTitle || `话题 ${index + 1}`;
+}
+
+function normalizeRelaxedDialogueGroups(payload: unknown): TranscriptDialogueGroup[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .map((item, index) => {
+      const question = normalizeDialogueTopicTurnRecord(item.question);
+      const answers = Array.isArray(item.answers)
+        ? item.answers
+          .map((answer) => normalizeDialogueTopicTurnRecord(answer))
+          .filter((answer) => answer.timestamp && answer.textZh)
+        : [];
+      const legacyAnswer = !answers.length
+        ? normalizeDialogueTopicTurnRecord(item.answer)
+        : null;
+      const normalizedAnswers = answers.length
+        ? answers
+        : (legacyAnswer && legacyAnswer.timestamp && legacyAnswer.textZh ? [legacyAnswer] : []);
+      const questionAndAnswersTurns = [
+        question,
+        ...normalizedAnswers,
+      ].filter((turn) => turn.timestamp && turn.textZh);
+      const turns = questionAndAnswersTurns.length
+        ? questionAndAnswersTurns
+        : normalizeDialogueTurnArray(item.turns);
+      const hasStructuredQa = (
+        question.timestamp
+        && question.textZh
+        && normalizedAnswers.length > 0
+        && containsSingleQuestionPrompt(question.textZh)
+        && hasDistinctAnswerSpeakers(normalizedAnswers)
+      );
+      const group: TranscriptDialogueGroup = {
+        topicTitleZh: normalizeRelaxedDialogueTopicTitle(item, index),
+        turns,
+      };
+
+      if (hasStructuredQa) {
+        group.question = question;
+        group.answers = normalizedAnswers;
+      }
+
+      return group;
+    })
+    .filter((group) => group.turns.length);
+}
+
+function normalizeRelaxedDialogueTurns(
+  payload: unknown,
+  model: string,
+  section: TranscriptSection,
+): TranscriptDialogueSliceResult {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new AppError('gemini_invalid_dialogue_payload', 'Gemini 返回了无法识别的对话翻译结果。', 502);
+  }
+
+  const record = payload as Record<string, unknown>;
+  const topicTitleZh = resolveDialogueSectionTitleZh(record, section);
+  const topicSummaryZh = resolveDialogueSectionSummaryZh(record, section);
+  const groups = normalizeRelaxedDialogueGroups(
+    Array.isArray(record.topics) ? record.topics : record.groups,
+  );
+  const turns = groups.length
+    ? groups.flatMap((group) => group.turns)
+    : normalizeDialogueTurnArray(record.turns);
+
+  if (!topicTitleZh || !topicSummaryZh) {
+    throw new AppError('gemini_missing_dialogue_section_intro', 'Gemini 没有返回可渲染的分段中文标题或摘要。', 502);
+  }
+
+  if (!turns.length) {
+    throw new AppError('gemini_missing_dialogue_turns', 'Gemini 没有返回可渲染的对话片段。', 502);
+  }
+
+  return {
+    section: {
+      ...section,
+      topicTitleZh,
+      topicSummaryZh,
+      subtitleZh: topicTitleZh,
+      summaryZh: topicSummaryZh,
+    },
+    turns,
+    groups,
+    model,
+    usedFallback: true,
   };
 }
 
@@ -955,46 +1195,58 @@ function normalizeDialogueTurns(payload: unknown, model: string, section: Transc
   }
 
   const record = payload as Record<string, unknown>;
-  const topicTitleZh = typeof record.topicTitleZh === 'string'
-    ? normalizeWhitespace(record.topicTitleZh)
-    : (typeof record.subtitleZh === 'string' ? normalizeWhitespace(record.subtitleZh) : '');
-  const topicSummaryZh = typeof record.topicSummaryZh === 'string'
-    ? normalizeWhitespace(record.topicSummaryZh)
-    : (typeof record.summaryZh === 'string' ? normalizeWhitespace(record.summaryZh) : '');
-  const turns = Array.isArray(record.turns)
-    ? record.turns
+  const topicTitleZh = resolveDialogueSectionTitleZh(record, section);
+  const topicSummaryZh = resolveDialogueSectionSummaryZh(record, section);
+  const groups = Array.isArray(record.topics)
+    ? record.topics
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
-      .map(normalizeDialogueTurnRecord)
-      .filter((item) => item.timestamp && item.textZh)
-    : [];
-  const groups = Array.isArray(record.groups)
-    ? record.groups
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
-      .map((item) => ({
-        topicTitleZh: typeof item.topicTitleZh === 'string' ? normalizeWhitespace(item.topicTitleZh) : '',
-        turns: Array.isArray(item.turns)
-          ? item.turns
-            .filter((turn): turn is Record<string, unknown> => Boolean(turn) && typeof turn === 'object' && !Array.isArray(turn))
-            .map(normalizeDialogueTurnRecord)
-            .filter((turn) => turn.timestamp && turn.textZh)
-          : [],
-      }))
-      .filter((item) => item.topicTitleZh && item.turns.length)
-    : [];
-
-  if (!turns.length) {
-    throw new AppError('gemini_missing_dialogue_turns', 'Gemini 没有返回可渲染的对话片段。', 502);
-  }
+      .map((item) => {
+        const question = normalizeDialogueTopicTurnRecord(item.question);
+        const answers = Array.isArray(item.answers)
+          ? item.answers
+            .map((answer) => normalizeDialogueTopicTurnRecord(answer))
+            .filter((answer) => answer.timestamp && answer.textZh)
+          : [];
+        const legacyAnswer = !answers.length
+          ? normalizeDialogueTopicTurnRecord(item.answer)
+          : null;
+        const normalizedAnswers = answers.length
+          ? answers
+          : (legacyAnswer && legacyAnswer.timestamp && legacyAnswer.textZh ? [legacyAnswer] : []);
+        return {
+          topicTitleZh: typeof item.topicTitleZh === 'string' ? normalizeWhitespace(item.topicTitleZh) : '',
+          question,
+          answers: normalizedAnswers,
+          turns: [question, ...normalizedAnswers].filter((turn) => turn.timestamp && turn.textZh),
+        };
+      })
+      .filter((item) => item.topicTitleZh && item.question.timestamp && item.question.textZh && item.answers.length)
+      : [];
+  const turns = groups.flatMap((group) => group.turns)
+    .map((turn) => ({
+      timestamp: turn.timestamp,
+      speaker: turn.speaker,
+      textZh: turn.textZh,
+    }));
 
   if (!topicTitleZh || !topicSummaryZh) {
     throw new AppError('gemini_missing_dialogue_section_intro', 'Gemini 没有返回可渲染的分段中文标题或摘要。', 502);
   }
 
   if (!groups.length) {
-    groups.push({
-      topicTitleZh,
-      turns,
-    });
+    throw new AppError('gemini_missing_dialogue_groups', 'Gemini 没有返回符合单问回答规则的对话分组。', 502);
+  }
+
+  if (!groups.every((group) => containsSingleQuestionPrompt(group.question?.textZh ?? ''))) {
+    throw new AppError('gemini_invalid_dialogue_groups', 'Gemini 返回的 topic 没有严格遵循单个问题格式。', 502);
+  }
+
+  if (!groups.every((group) => hasDistinctAnswerSpeakers(group.answers))) {
+    throw new AppError('gemini_invalid_dialogue_groups', 'Gemini 返回的 topic 在多回答场景下没有使用不同说话人。', 502);
+  }
+
+  if (!turns.length) {
+    throw new AppError('gemini_missing_dialogue_turns', 'Gemini 没有返回可渲染的对话片段。', 502);
   }
 
   return {
@@ -1009,6 +1261,19 @@ function normalizeDialogueTurns(payload: unknown, model: string, section: Transc
     groups,
     model,
   };
+}
+
+function shouldRelaxDialogueParsingError(error: unknown): boolean {
+  if (!(error instanceof AppError)) {
+    return false;
+  }
+
+  return [
+    'gemini_missing_dialogue_section_intro',
+    'gemini_missing_dialogue_groups',
+    'gemini_invalid_dialogue_groups',
+    'gemini_missing_dialogue_turns',
+  ].includes(error.code);
 }
 
 function stripDialogueSpeakers(
@@ -1027,6 +1292,16 @@ function stripDialogueSpeakers(
     })),
     groups: (result.groups ?? []).map((group) => ({
       ...group,
+      question: group.question
+        ? {
+            ...group.question,
+            speaker: '',
+          }
+        : undefined,
+      answers: (group.answers ?? []).map((answer) => ({
+        ...answer,
+        speaker: '',
+      })),
       turns: group.turns.map((turn) => ({
         ...turn,
         speaker: '',
@@ -1164,9 +1439,10 @@ export function parseTranscriptDialoguePayload(
   model: string,
   section: TranscriptSection,
 ): TranscriptDialogueSliceResult {
+  let parsed = raw;
+
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'candidates' in raw) {
     const candidateText = extractCandidateText(raw as GeminiGenerateContentResponse);
-    let parsed: unknown;
 
     try {
       parsed = JSON.parse(candidateText);
@@ -1175,11 +1451,17 @@ export function parseTranscriptDialoguePayload(
         cause: error,
       });
     }
-
-    return normalizeDialogueTurns(parsed, model, section);
   }
 
-  return normalizeDialogueTurns(raw, model, section);
+  try {
+    return normalizeDialogueTurns(parsed, model, section);
+  } catch (error) {
+    if (!shouldRelaxDialogueParsingError(error)) {
+      throw error;
+    }
+
+    return normalizeRelaxedDialogueTurns(parsed, model, section);
+  }
 }
 
 export function parseQuickTranscriptSectionSummaryPayload(

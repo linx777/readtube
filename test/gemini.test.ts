@@ -226,7 +226,7 @@ describe('parseTranscriptDialoguePayload', () => {
           content: {
             parts: [
               {
-                text: '{"topicTitleZh":"AI采用争论","topicSummaryZh":"先抛出采用分歧。","turns":[{"timestamp":"00:12","speaker":"Jen","textZh":"面对 AI 带来的重大问题，公司与风投机构的应对有何不同？"},{"timestamp":"00:35","speaker":"Mark","textZh":"这些问题价值巨大，而且目前还没有定论。"}],"groups":[{"topicTitleZh":"社会恐慌与采纳","turns":[{"timestamp":"00:12","speaker":"Jen","textZh":"面对 AI 带来的重大问题，公司与风投机构的应对有何不同？"},{"timestamp":"00:35","speaker":"Mark","textZh":"这些问题价值巨大，而且目前还没有定论。"}]}]}',
+                text: '{"sectionTitleZh":"AI采用争论","sectionSummaryZh":"先抛出采用分歧。","topics":[{"topicTitleZh":"社会恐慌与采纳","question":{"timestamp":"00:12","speaker":"Jen","content":"面对 AI 带来的重大问题，公司与风投机构的应对有何不同？"},"answers":[{"timestamp":"00:35","speaker":"Mark","content":"这些问题价值巨大，而且目前还没有定论。"}]}]}',
               },
             ],
           },
@@ -265,6 +265,18 @@ describe('parseTranscriptDialoguePayload', () => {
       groups: [
         {
           topicTitleZh: '社会恐慌与采纳',
+          question: {
+            timestamp: '00:12',
+            speaker: 'Jen',
+            textZh: '面对 AI 带来的重大问题，公司与风投机构的应对有何不同？',
+          },
+          answers: [
+            {
+              timestamp: '00:35',
+              speaker: 'Mark',
+              textZh: '这些问题价值巨大，而且目前还没有定论。',
+            },
+          ],
           turns: [
             {
               timestamp: '00:12',
@@ -283,6 +295,97 @@ describe('parseTranscriptDialoguePayload', () => {
     });
   });
 
+  it('parses one question with multiple answers when each answer has a different speaker', () => {
+    expect(parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"sectionTitleZh":"多方回应","sectionSummaryZh":"多方表态。","topics":[{"topicTitleZh":"AI价值判断","question":{"timestamp":"00:12","speaker":"Jen","content":"你们分别怎么看 AI 的长期影响？"},"answers":[{"timestamp":"00:35","speaker":"Marc","content":"我认为它会重塑软件和生产力。"},{"timestamp":"00:48","speaker":"Ben","content":"我更关注它对组织结构和决策流程的影响。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+      startLabel: '00:00',
+      endLabel: '05:00',
+      subtitle: 'Opening debate',
+      summary: 'The host frames the AI adoption debate.',
+      transcript: '[00:12] Example line',
+    })).toEqual({
+      section: {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+        topicTitleZh: '多方回应',
+        topicSummaryZh: '多方表态。',
+        subtitleZh: '多方回应',
+        summaryZh: '多方表态。',
+      },
+      turns: [
+        {
+          timestamp: '00:12',
+          speaker: 'Jen',
+          textZh: '你们分别怎么看 AI 的长期影响？',
+        },
+        {
+          timestamp: '00:35',
+          speaker: 'Marc',
+          textZh: '我认为它会重塑软件和生产力。',
+        },
+        {
+          timestamp: '00:48',
+          speaker: 'Ben',
+          textZh: '我更关注它对组织结构和决策流程的影响。',
+        },
+      ],
+      groups: [
+        {
+          topicTitleZh: 'AI价值判断',
+          question: {
+            timestamp: '00:12',
+            speaker: 'Jen',
+            textZh: '你们分别怎么看 AI 的长期影响？',
+          },
+          answers: [
+            {
+              timestamp: '00:35',
+              speaker: 'Marc',
+              textZh: '我认为它会重塑软件和生产力。',
+            },
+            {
+              timestamp: '00:48',
+              speaker: 'Ben',
+              textZh: '我更关注它对组织结构和决策流程的影响。',
+            },
+          ],
+          turns: [
+            {
+              timestamp: '00:12',
+              speaker: 'Jen',
+              textZh: '你们分别怎么看 AI 的长期影响？',
+            },
+            {
+              timestamp: '00:35',
+              speaker: 'Marc',
+              textZh: '我认为它会重塑软件和生产力。',
+            },
+            {
+              timestamp: '00:48',
+              speaker: 'Ben',
+              textZh: '我更关注它对组织结构和决策流程的影响。',
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-pro-preview',
+    });
+  });
+
   it('keeps turns with empty speaker names for no-speaker rendering', () => {
     expect(parseTranscriptDialoguePayload({
       candidates: [
@@ -290,7 +393,7 @@ describe('parseTranscriptDialoguePayload', () => {
           content: {
             parts: [
               {
-                text: '{"topicTitleZh":"独白开场","topicSummaryZh":"先交代背景。","turns":[{"timestamp":"00:12","speaker":"","textZh":"先从背景开始说起。"},{"timestamp":"00:35","speaker":"","textZh":"接着给出自己的判断。"}]}',
+                text: '{"sectionTitleZh":"独白开场","sectionSummaryZh":"先交代背景。","topics":[{"topicTitleZh":"独白开场","question":{"timestamp":"00:12","speaker":"","content":"这段内容主要在讲什么？"},"answers":[{"timestamp":"00:35","speaker":"","content":"讲者先从背景开始，再给出自己的判断。"}]}]}',
               },
             ],
           },
@@ -318,27 +421,39 @@ describe('parseTranscriptDialoguePayload', () => {
         {
           timestamp: '00:12',
           speaker: '',
-          textZh: '先从背景开始说起。',
+          textZh: '这段内容主要在讲什么？',
         },
         {
           timestamp: '00:35',
           speaker: '',
-          textZh: '接着给出自己的判断。',
+          textZh: '讲者先从背景开始，再给出自己的判断。',
         },
       ],
       groups: [
         {
           topicTitleZh: '独白开场',
+          question: {
+            timestamp: '00:12',
+            speaker: '',
+            textZh: '这段内容主要在讲什么？',
+          },
+          answers: [
+            {
+              timestamp: '00:35',
+              speaker: '',
+              textZh: '讲者先从背景开始，再给出自己的判断。',
+            },
+          ],
           turns: [
             {
               timestamp: '00:12',
               speaker: '',
-              textZh: '先从背景开始说起。',
+              textZh: '这段内容主要在讲什么？',
             },
             {
               timestamp: '00:35',
               speaker: '',
-              textZh: '接着给出自己的判断。',
+              textZh: '讲者先从背景开始，再给出自己的判断。',
             },
           ],
         },
@@ -346,6 +461,303 @@ describe('parseTranscriptDialoguePayload', () => {
       model: 'gemini-3.1-pro-preview',
     });
   });
+
+  it('salvages legacy dialogue groups when Gemini returns translated turns without structured topics', () => {
+    expect(parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"topicTitleZh":"AI采用争论","topicSummaryZh":"先抛出采用分歧。","groups":[{"topicTitleZh":"社会恐慌与采纳","turns":[{"timestamp":"00:12","speaker":"Jen","textZh":"为什么企业现在更谨慎？"},{"timestamp":"00:35","speaker":"Mark","textZh":"因为部署要先落到真实流程里。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+    })).toEqual({
+      section: {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+        topicTitleZh: 'AI采用争论',
+        topicSummaryZh: '先抛出采用分歧。',
+        subtitleZh: 'AI采用争论',
+        summaryZh: '先抛出采用分歧。',
+      },
+      turns: [
+        {
+          timestamp: '00:12',
+          speaker: 'Jen',
+          textZh: '为什么企业现在更谨慎？',
+        },
+        {
+          timestamp: '00:35',
+          speaker: 'Mark',
+          textZh: '因为部署要先落到真实流程里。',
+        },
+      ],
+      groups: [
+        {
+          topicTitleZh: '社会恐慌与采纳',
+          turns: [
+            {
+              timestamp: '00:12',
+              speaker: 'Jen',
+              textZh: '为什么企业现在更谨慎？',
+            },
+            {
+              timestamp: '00:35',
+              speaker: 'Mark',
+              textZh: '因为部署要先落到真实流程里。',
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-pro-preview',
+      usedFallback: true,
+    });
+  });
+
+  it('reuses existing section preview copy when salvaging translated turns without section intro fields', () => {
+    expect(parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"groups":[{"turns":[{"timestamp":"00:12","speaker":"Jen","textZh":"为什么企业现在更谨慎？"},{"timestamp":"00:35","speaker":"Mark","textZh":"因为部署要先落到真实流程里。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+      startLabel: '00:00',
+      endLabel: '05:00',
+      subtitle: 'Opening debate',
+      summary: 'The host frames the AI adoption debate.',
+      transcript: '[00:12] Example line',
+      topicTitleZh: '预览标题',
+      topicSummaryZh: '预览摘要。',
+      subtitleZh: '预览标题',
+      summaryZh: '预览摘要。',
+    })).toEqual({
+      section: {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+        topicTitleZh: '预览标题',
+        topicSummaryZh: '预览摘要。',
+        subtitleZh: '预览标题',
+        summaryZh: '预览摘要。',
+      },
+      turns: [
+        {
+          timestamp: '00:12',
+          speaker: 'Jen',
+          textZh: '为什么企业现在更谨慎？',
+        },
+        {
+          timestamp: '00:35',
+          speaker: 'Mark',
+          textZh: '因为部署要先落到真实流程里。',
+        },
+      ],
+      groups: [
+        {
+          topicTitleZh: '话题 1',
+          turns: [
+            {
+              timestamp: '00:12',
+              speaker: 'Jen',
+              textZh: '为什么企业现在更谨慎？',
+            },
+            {
+              timestamp: '00:35',
+              speaker: 'Mark',
+              textZh: '因为部署要先落到真实流程里。',
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-pro-preview',
+      usedFallback: true,
+    });
+  });
+
+  it('salvages translated turns when a topic question is not a single question sentence', () => {
+    expect(parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"sectionTitleZh":"AI采用争论","sectionSummaryZh":"先抛出采用分歧。","topics":[{"topicTitleZh":"社会恐慌与采纳","question":{"timestamp":"00:12","speaker":"Jen","content":"企业现在更谨慎。"},"answers":[{"timestamp":"00:35","speaker":"Mark","content":"因为部署要先落到真实流程里。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+    })).toEqual({
+      section: {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+        topicTitleZh: 'AI采用争论',
+        topicSummaryZh: '先抛出采用分歧。',
+        subtitleZh: 'AI采用争论',
+        summaryZh: '先抛出采用分歧。',
+      },
+      turns: [
+        {
+          timestamp: '00:12',
+          speaker: 'Jen',
+          textZh: '企业现在更谨慎。',
+        },
+        {
+          timestamp: '00:35',
+          speaker: 'Mark',
+          textZh: '因为部署要先落到真实流程里。',
+        },
+      ],
+      groups: [
+        {
+          topicTitleZh: '社会恐慌与采纳',
+          turns: [
+            {
+              timestamp: '00:12',
+              speaker: 'Jen',
+              textZh: '企业现在更谨慎。',
+            },
+            {
+              timestamp: '00:35',
+              speaker: 'Mark',
+              textZh: '因为部署要先落到真实流程里。',
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-pro-preview',
+      usedFallback: true,
+    });
+  });
+
+  it('salvages translated turns when multiple answers reuse the same speaker', () => {
+    expect(parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"sectionTitleZh":"多方回应","sectionSummaryZh":"多方表态。","topics":[{"topicTitleZh":"AI价值判断","question":{"timestamp":"00:12","speaker":"Jen","content":"你们分别怎么看 AI 的长期影响？"},"answers":[{"timestamp":"00:35","speaker":"Marc","content":"我认为它会重塑软件和生产力。"},{"timestamp":"00:48","speaker":"Marc","content":"我也认为它会改变组织流程。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+    })).toEqual({
+      section: {
+        startLabel: '00:00',
+        endLabel: '05:00',
+        subtitle: 'Opening debate',
+        summary: 'The host frames the AI adoption debate.',
+        transcript: '[00:12] Example line',
+        topicTitleZh: '多方回应',
+        topicSummaryZh: '多方表态。',
+        subtitleZh: '多方回应',
+        summaryZh: '多方表态。',
+      },
+      turns: [
+        {
+          timestamp: '00:12',
+          speaker: 'Jen',
+          textZh: '你们分别怎么看 AI 的长期影响？',
+        },
+        {
+          timestamp: '00:35',
+          speaker: 'Marc',
+          textZh: '我认为它会重塑软件和生产力。',
+        },
+        {
+          timestamp: '00:48',
+          speaker: 'Marc',
+          textZh: '我也认为它会改变组织流程。',
+        },
+      ],
+      groups: [
+        {
+          topicTitleZh: 'AI价值判断',
+          turns: [
+            {
+              timestamp: '00:12',
+              speaker: 'Jen',
+              textZh: '你们分别怎么看 AI 的长期影响？',
+            },
+            {
+              timestamp: '00:35',
+              speaker: 'Marc',
+              textZh: '我认为它会重塑软件和生产力。',
+            },
+            {
+              timestamp: '00:48',
+              speaker: 'Marc',
+              textZh: '我也认为它会改变组织流程。',
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-pro-preview',
+      usedFallback: true,
+    });
+  });
+
+  it('still rejects dialogue payloads when there are no usable translated turns to render', () => {
+    expect(() => parseTranscriptDialoguePayload({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: '{"sectionTitleZh":"多方回应","sectionSummaryZh":"多方表态。","topics":[{"topicTitleZh":"AI价值判断","question":{"timestamp":"","speaker":"Jen","content":"你们分别怎么看 AI 的长期影响？"},"answers":[{"timestamp":"","speaker":"Marc","content":"我认为它会重塑软件和生产力。"}]}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }, 'gemini-3.1-pro-preview', {
+      startLabel: '00:00',
+      endLabel: '05:00',
+      subtitle: 'Opening debate',
+      summary: 'The host frames the AI adoption debate.',
+      transcript: '[00:12] Example line',
+    })).toThrow('Gemini 没有返回可渲染的对话片段。');
+  });
+
 });
 
 describe('parseQuickTranscriptSectionSummaryPayload', () => {
@@ -387,6 +799,7 @@ describe('parseQuickTranscriptSectionSummaryPayload', () => {
       model: 'gemini-3.1-flash-lite-preview',
     });
   });
+
 });
 
 describe('translateTranscriptSectionToZh', () => {
@@ -398,7 +811,7 @@ describe('translateTranscriptSectionToZh', () => {
           content: {
             parts: [
               {
-                text: '{"subtitleZh":"独白开场","summaryZh":"讲者先交代背景。","turns":[{"timestamp":"00:12","speaker":"Donald","textZh":"先从背景开始说起。"}]}',
+                text: '{"sectionTitleZh":"独白开场","sectionSummaryZh":"讲者先交代背景。","topics":[{"topicTitleZh":"独白开场","question":{"timestamp":"00:12","speaker":"Donald","content":"这段内容主要在讲什么？"},"answers":[{"timestamp":"00:12","speaker":"Donald","content":"先从背景开始说起。"}]}]}',
               },
             ],
           },
@@ -465,13 +878,35 @@ describe('translateTranscriptSectionToZh', () => {
           {
             timestamp: '00:12',
             speaker: '',
+            textZh: '这段内容主要在讲什么？',
+          },
+          {
+            timestamp: '00:12',
+            speaker: '',
             textZh: '先从背景开始说起。',
           },
         ],
         groups: [
           {
             topicTitleZh: '独白开场',
+            question: {
+              timestamp: '00:12',
+              speaker: '',
+              textZh: '这段内容主要在讲什么？',
+            },
+            answers: [
+              {
+                timestamp: '00:12',
+                speaker: '',
+                textZh: '先从背景开始说起。',
+              },
+            ],
             turns: [
+              {
+                timestamp: '00:12',
+                speaker: '',
+                textZh: '这段内容主要在讲什么？',
+              },
               {
                 timestamp: '00:12',
                 speaker: '',
@@ -502,7 +937,7 @@ describe('translateTranscriptSectionToZh', () => {
             content: {
               parts: [
                 {
-                  text: '{"subtitleZh":"AI 采用趋势","summaryZh":"这一段聚焦企业采用 AI 的现实进展。","turns":[{"timestamp":"40:05","speaker":"","textZh":"企业开始更务实地采用 AI。"}]}',
+                  text: '{"sectionTitleZh":"AI 采用趋势","sectionSummaryZh":"聚焦AI落地。","topics":[{"topicTitleZh":"AI采用趋势","question":{"timestamp":"40:05","speaker":"","content":"企业在这一段里如何采用 AI？"},"answers":[{"timestamp":"40:05","speaker":"","content":"企业开始更务实地采用 AI。"}]}]}',
                 },
               ],
             },
@@ -558,21 +993,34 @@ describe('translateTranscriptSectionToZh', () => {
 
       expect(requestPrompt).toContain('The provided section subtitle and summary are generic placeholder labels created from a fixed time slice.');
       expect(requestPrompt).toContain('Do not literally translate those placeholder labels.');
-      expect(requestPrompt).toContain('write a fresh concise topicTitleZh');
+      expect(requestPrompt).toContain('write a fresh concise sectionTitleZh');
       expect(requestPrompt).toContain('These rules must generalize across interviews, podcasts, lectures, explainers, tutorials, news reports, documentaries, monologues, vlogs, speeches, and mixed-format videos.');
-      expect(requestPrompt).toContain('Return topicTitleZh as a concise higher-level Simplified Chinese heading');
-      expect(requestPrompt).toContain('Return topicSummaryZh as one concise natural Simplified Chinese summary sentence');
-      expect(requestPrompt).toContain('Keep topicTitleZh to exactly 4 Chinese characters when possible.');
-      expect(requestPrompt).toContain('Keep topicSummaryZh under 15 Chinese characters when possible.');
-      expect(requestPrompt).toContain('Also return groups for the smaller exchanges inside this larger section.');
-      expect(requestPrompt).toContain('Each item in groups must represent exactly one main question and exactly one answer pair.');
-      expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
-      expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
-      expect(requestPrompt).toContain('If only an answer is present, generate a corresponding question.');
-      expect(requestPrompt).toContain('If only a question is present, remove it.');
-      expect(requestPrompt).toContain('If, after processing, a topic/group still does not contain exactly one question and one answer, discard that topic/group entirely.');
-      expect(requestPrompt).toContain('FINAL CHECK BEFORE RETURNING: delete any group that does not end with exactly one question and exactly one answer.');
-      expect(requestPrompt).toContain('Every translated turn must appear in exactly one group.');
+      expect(requestPrompt).toContain('Return sectionTitleZh as a concise higher-level Simplified Chinese heading');
+      expect(requestPrompt).toContain('Return sectionSummaryZh as one concise natural Simplified Chinese summary sentence');
+      expect(requestPrompt).toContain('Keep sectionTitleZh to exactly 4 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep sectionSummaryZh under 10 Chinese characters.');
+      expect(requestPrompt).toContain('Also return topics for the smaller exchanges inside this larger section.');
+      expect(requestPrompt).toContain('Each item in topics must represent exactly one main question with one or more direct answers.');
+      expect(requestPrompt).toContain('Each topic.question must be a single translated question turn with its speaker and timestamp.');
+      expect(requestPrompt).toContain('topic.question.content must be written as exactly one explicit question sentence, not multiple stitched questions.');
+      expect(requestPrompt).toContain('Each item in topic.answers must be a single translated answer turn with its speaker and timestamp.');
+      expect(requestPrompt).toContain('Keep each question concise, but keep each answer detailed and complete.');
+      expect(requestPrompt).toContain('Do not over-compress answers into short summaries or slogans.');
+      expect(requestPrompt).toContain('Preserve the answer detail from the source: key reasoning, examples, evidence, comparisons, qualifiers, and concrete claims should stay in topic.answers[*].content whenever present.');
+      expect(requestPrompt).toContain('topic.answers[*].content may be multiple sentences when needed to retain the original detail and words.');
+      expect(requestPrompt).toContain('If multiple speakers answer the same question, keep them as separate items in topic.answers instead of merging them into one speaker turn.');
+      expect(requestPrompt).toContain('When topic.answers has multiple items, each answer must have a different non-empty speaker name.');
+      expect(requestPrompt).toContain('sectionSummaryZh is the only place for a short summary; topic.answers[*].content should preserve the substantive detail of the original answer.');
+      expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC: Each topic MUST contain exactly one question.');
+      expect(requestPrompt).toContain('Each topic MUST contain one or more answers in answers.');
+      expect(requestPrompt).toContain('If only answers are present, generate one corresponding question.');
+      expect(requestPrompt).toContain('If, after processing, a topic still does not contain one valid question and at least one valid answer, discard that topic entirely.');
+      expect(requestPrompt).toContain('FINAL CHECK BEFORE RETURNING: delete any topic that does not end with exactly one question and at least one answer.');
+      expect(requestPrompt).toContain('Every translated idea in the section must appear in exactly one topic question or one of its answers.');
+      expect(requestPrompt).toContain('"sectionTitleZh": "..."');
+      expect(requestPrompt).toContain('"topics": [');
+      expect(requestPrompt).toContain('"question": { "timestamp": "...", "speaker": "...", "content": "..." }');
+      expect(requestPrompt).toContain('"answers": [');
       expect(requestPrompt).toContain('capture the broader theme, stance, tension, or takeaway');
     } finally {
       globalThis.fetch = originalFetch;
@@ -831,7 +1279,7 @@ describe('summarizeQuickTranscriptSection', () => {
       expect(requestPrompt).toContain('Make topicTitleZh work for any video type');
       expect(requestPrompt).toContain('Return topicSummaryZh as one concise Simplified Chinese summary sentence');
       expect(requestPrompt).toContain('Keep topicTitleZh to exactly 4 Chinese characters when possible.');
-      expect(requestPrompt).toContain('Keep topicSummaryZh under 15 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep topicSummaryZh under 10 Chinese characters.');
       expect(requestPrompt).toContain('instead of merely restating the question literally');
       expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
       expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
@@ -936,7 +1384,7 @@ describe('generateTranscriptSections', () => {
       expect(requestPrompt).toContain('instead of merely repeating the literal wording of one question line');
       expect(requestPrompt).toContain('Write all section summaries in natural Simplified Chinese');
       expect(requestPrompt).toContain('Make each subtitle exactly 4 Chinese characters when possible.');
-      expect(requestPrompt).toContain('Each summary should be a single short sentence that captures the broader point of the section and stays under 15 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Each summary should be a single short sentence that captures the broader point of the section and must stay under 10 Chinese characters.');
       expect(requestPrompt).toContain('titleTranslationZh');
       expect(requestPrompt).toContain('summaryZh');
       expect(requestPrompt).toContain('summary');
@@ -1029,7 +1477,7 @@ describe('generateTranscriptSectionBoundaries', () => {
       expect(requestPrompt).toContain('Use the same heading logic for all video types');
       expect(requestPrompt).toContain('instead of merely restating one question line');
       expect(requestPrompt).toContain('Make each subtitle exactly 4 Chinese characters when possible.');
-      expect(requestPrompt).toContain('Keep each summary under 15 Chinese characters when possible.');
+      expect(requestPrompt).toContain('Keep each summary under 10 Chinese characters.');
       expect(requestPrompt).toContain('HARD REQUIREMENT FOR EVERY TOPIC/GROUP: Each topic MUST contain exactly one question and exactly one answer.');
       expect(requestPrompt).toContain('NO EXCEPTIONS: no more, no less.');
       expect(requestPrompt).toContain('If only an answer is present, generate a corresponding question.');

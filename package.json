@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "transcript:pull": "node scripts/pull-transcript.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260329.1",

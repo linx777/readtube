@@ -80,6 +80,32 @@ function createExecutionContext() {
   };
 }
 
+function createContentCacheMock(records?: {
+  article?: unknown;
+  transcript?: unknown;
+}) {
+  const get = vi.fn(async (key: string) => {
+    if (key.includes('article:')) {
+      return records?.article ?? null;
+    }
+
+    if (key.includes('transcript:')) {
+      return records?.transcript ?? null;
+    }
+
+    return null;
+  });
+  const put = vi.fn(async () => {});
+
+  return {
+    get,
+    put,
+  } as unknown as KVNamespace & {
+    get: ReturnType<typeof vi.fn>;
+    put: ReturnType<typeof vi.fn>;
+  };
+}
+
 describe('handleGenerateRoute', () => {
   beforeEach(() => {
     fetchTranscriptBundleMock.mockReset();
@@ -168,7 +194,377 @@ describe('handleGenerateRoute', () => {
       titleTranslationZh: '测试标题',
       summaryZh: '测试高亮',
       summary: 'Highlight sentence.',
-      speakers: ['Host'],
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:15',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:15',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] Closing line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+          answers: [{ timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' }],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('"target":"dialogue","html":"<div class=\\"dialogue-section-block\\" data-dialogue-section-id=\\"dialogue-section-1\\">');
+    expect(body).toContain('data-loading-hint-offset=\\"1\\"');
+    expect(body).toContain('Gemini 正在对齐时间戳');
+    expect(body).toContain('翻译内容会和原始时间点一一对应，方便回跳视频。');
+    expect(body).toContain('"target":"dialogue-replace"');
+    expect(body).toContain('"sectionId":"dialogue-section-1"');
+    expect(body).toContain('section-theme-title');
+    expect(body).toContain('section-theme-summary');
+    expect(body).toContain('section-theme-divider');
+    expect(body).toContain('开场判断');
+    expect(body).toContain('先交代核心背景。');
+    expect(body).not.toContain('内容翻译中');
+    expect(body).toContain('dialogue-subtopic-title');
+    expect(body).toContain('投资判断');
+    expect(body).toContain('开场白。');
+    expect(body).toContain('qa-speaker\\">Jen<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">Jen</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:00</span></div>');
+    expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">Marc</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:15</span></div>');
+    expect(body).not.toContain('问题 · Jen');
+    expect(body).not.toContain('回答 · Marc');
+  });
+
+  it('skips shared article cache replay when the cached article is flagged for refresh', async () => {
+    const bundle = createBundle();
+    const contentCache = createContentCacheMock({
+      article: {
+        version: 5,
+        cachedAt: Date.now(),
+        articleHtml: '<header data-article-hero>stale cached article</header>',
+        meta: {
+          videoId: bundle.videoId,
+          readingMode: 'full',
+          translationNeedsRefresh: true,
+          sourceTitle: 'Stale title',
+        },
+      },
+    });
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:15',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:15',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] Closing line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+          answers: [{ timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' }],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+      CONTENT_CACHE: contentCache,
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).toHaveBeenCalledTimes(1);
+    expect(body).not.toContain('stale cached article');
+    expect(body).not.toContain('"stage":"cloud_article_cache_hit"');
+    expect(body).toContain('开场白。');
+  });
+
+  it('seeds different initial loading hints for each section preview in full mode', async () => {
+    const bundle = createBundle({
+      durationSeconds: 60,
+      chunks: [
+        { start: 0, end: 15, text: 'Opening line' },
+        { start: 15, end: 30, text: 'First answer' },
+        { start: 30, end: 45, text: 'Second question' },
+        { start: 45, end: 60, text: 'Second answer' },
+      ],
+    });
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:30',
+          subtitle: 'Opening',
+          summary: 'Covers the opening exchange.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+        {
+          startLabel: '00:30',
+          endLabel: '00:45',
+          subtitle: 'Follow-up',
+          summary: 'Covers the follow-up exchange.',
+          topicTitleZh: '后续追问',
+          topicSummaryZh: '继续补充说明。',
+          subtitleZh: '追问',
+          summaryZh: '概述后续内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockImplementation(async (
+      _bundle,
+      section,
+    ) => ({
+      section: {
+        ...section,
+        transcript: `[${section.startLabel}] ${section.subtitle}`,
+      },
+      turns: [
+        { timestamp: section.startLabel, speaker: 'Jen', textZh: `${section.subtitle}问题。` },
+        { timestamp: section.endLabel, speaker: 'Marc', textZh: `${section.subtitle}回答。` },
+      ],
+      groups: [
+        {
+          topicTitleZh: `${section.subtitle}分组`,
+          question: { timestamp: section.startLabel, speaker: 'Jen', textZh: `${section.subtitle}问题。` },
+          answers: [{ timestamp: section.endLabel, speaker: 'Marc', textZh: `${section.subtitle}回答。` }],
+          turns: [
+            { timestamp: section.startLabel, speaker: 'Jen', textZh: `${section.subtitle}问题。` },
+            { timestamp: section.endLabel, speaker: 'Marc', textZh: `${section.subtitle}回答。` },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    }));
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('data-loading-hint-offset=\\"1\\"');
+    expect(body).toContain('Gemini 正在对齐时间戳');
+    expect(body).toContain('翻译内容会和原始时间点一一对应，方便回跳视频。');
+    expect(body).toContain('data-loading-hint-offset=\\"2\\"');
+    expect(body).toContain('Gemini 正在打磨中文表达');
+    expect(body).toContain('会优先保持自然、直接、适合阅读的中文语感。');
+  });
+
+  it('marks degraded fallback translations for refresh and skips shared article cache writes', async () => {
+    const bundle = createBundle();
+    const contentCache = createContentCacheMock();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:15',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:15',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] Closing line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+      usedFallback: true,
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+      CONTENT_CACHE: contentCache,
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    const putKeys = contentCache.put.mock.calls.map((call) => String(call[0]));
+    expect(body).toContain('"translationNeedsRefresh":true');
+    expect(body).toContain('"geminiTranslationComplete":true');
+    expect(putKeys.some((key) => key.includes('article:'))).toBe(false);
+    expect(putKeys.some((key) => key.includes('transcript:'))).toBe(true);
+  });
+
+  it('renders Unknown speakers as Host in translated dialogue', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
       sections: [
         {
           startLabel: '00:00',
@@ -197,15 +593,17 @@ describe('handleGenerateRoute', () => {
         transcript: '[00:00] Opening line\n[00:15] Closing line',
       },
       turns: [
-        { timestamp: '00:00', speaker: 'Host', textZh: '开场白。' },
-        { timestamp: '00:15', speaker: 'Host', textZh: '结束语。' },
+        { timestamp: '00:00', speaker: 'Unknown', textZh: '开场白。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
       ],
       groups: [
         {
           topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Unknown', textZh: '开场白。' },
+          answers: [{ timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' }],
           turns: [
-            { timestamp: '00:00', speaker: 'Host', textZh: '开场白。' },
-            { timestamp: '00:15', speaker: 'Host', textZh: '结束语。' },
+            { timestamp: '00:00', speaker: 'Unknown', textZh: '开场白。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
           ],
         },
       ],
@@ -232,20 +630,360 @@ describe('handleGenerateRoute', () => {
     await waitForAll();
 
     const body = await bodyPromise;
-    expect(body).toContain('"target":"dialogue","html":"<div class=\\"dialogue-section-block\\" data-dialogue-section-id=\\"dialogue-section-1\\">');
-    expect(body).toContain('Gemini 正在打磨中文表达');
-    expect(body).toContain('会优先保持自然、直接、适合阅读的中文语感。');
-    expect(body).toContain('"target":"dialogue-replace"');
-    expect(body).toContain('"sectionId":"dialogue-section-1"');
-    expect(body).toContain('section-theme-title');
-    expect(body).toContain('section-theme-summary');
-    expect(body).toContain('section-theme-divider');
-    expect(body).toContain('开场判断');
-    expect(body).toContain('先交代核心背景。');
-    expect(body).not.toContain('内容翻译中');
-    expect(body).toContain('dialogue-subtopic-title');
-    expect(body).toContain('投资判断');
-    expect(body).toContain('开场白。');
+    expect(body).toContain('qa-speaker\\">Host<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).not.toContain('qa-speaker\\">Unknown<');
+  });
+
+  it('renders multiple answer speakers for one question in order', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc', 'Ben'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:45',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:45',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] First answer\n[00:30] Second answer',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+        { timestamp: '00:30', speaker: 'Ben', textZh: '回答二。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+          answers: [
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+            { timestamp: '00:30', speaker: 'Ben', textZh: '回答二。' },
+          ],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+            { timestamp: '00:30', speaker: 'Ben', textZh: '回答二。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">Jen<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).toContain('qa-speaker\\">Ben<');
+    expect(body).toContain('问题。');
+    expect(body).toContain('回答一。');
+    expect(body).toContain('回答二。');
+  });
+
+  it('combines consecutive answers from the same speaker when rendering', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:45',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:45',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] First answer\n[00:30] Second answer',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+        { timestamp: '00:30', speaker: 'Marc', textZh: '回答二。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+          answers: [
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+            { timestamp: '00:30', speaker: 'Marc', textZh: '回答二。' },
+          ],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答一。' },
+            { timestamp: '00:30', speaker: 'Marc', textZh: '回答二。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">Jen<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).toContain('回答一。回答二。');
+    expect(body).not.toContain('回答一。</p></div></section><section class=\\"qa\\"><div class=\\"qa-meta\\"><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:30</span></div><div class=\\"qa-speaker\\">Marc</div>');
+  });
+
+  it('drops later repeated answer speakers after another speaker has answered', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc', 'Ben'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:55',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:55',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Question\n[00:15] Answer A\n[00:25] Answer B1\n[00:35] Answer B2\n[00:45] Answer A2',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '回答甲。' },
+        { timestamp: '00:25', speaker: 'Ben', textZh: '回答乙上半段。' },
+        { timestamp: '00:35', speaker: 'Ben', textZh: '回答乙下半段。' },
+        { timestamp: '00:45', speaker: 'Marc', textZh: '回补说明。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+          answers: [
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答甲。' },
+            { timestamp: '00:25', speaker: 'Ben', textZh: '回答乙上半段。' },
+            { timestamp: '00:35', speaker: 'Ben', textZh: '回答乙下半段。' },
+            { timestamp: '00:45', speaker: 'Marc', textZh: '回补说明。' },
+          ],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '问题。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '回答甲。' },
+            { timestamp: '00:25', speaker: 'Ben', textZh: '回答乙上半段。' },
+            { timestamp: '00:35', speaker: 'Ben', textZh: '回答乙下半段。' },
+            { timestamp: '00:45', speaker: 'Marc', textZh: '回补说明。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">Jen<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).toContain('qa-speaker\\">Ben<');
+    expect(body).toContain('回答甲。');
+    expect(body).toContain('回答乙上半段。回答乙下半段。');
+    expect(body).not.toContain('回补说明。');
+  });
+
+  it('drops answer turns when the question speaker reappears after another answer speaker', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Jen', 'Marc'],
+      sections: [
+        {
+          startLabel: '01:20',
+          endLabel: '01:21',
+          subtitle: 'Mars travel',
+          summary: 'Discusses whether they would go to Mars.',
+          topicTitleZh: '是否前往',
+          topicSummaryZh: '讨论火星意愿。',
+          subtitleZh: '是否前往',
+          summaryZh: '讨论火星意愿。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '01:20',
+        endLabel: '01:21',
+        subtitle: 'Mars travel',
+        summary: 'Discusses whether they would go to Mars.',
+        topicTitleZh: '是否前往',
+        topicSummaryZh: '讨论火星意愿。',
+        subtitleZh: '是否前往',
+        summaryZh: '讨论火星意愿。',
+        transcript: '[01:20:02] Question\n[01:20:11] Marc answer\n[01:20:55] Jen follow-up',
+      },
+      turns: [
+        { timestamp: '01:20:02', speaker: 'Jen', textZh: '你是否计划在火星旅行机会出现时前往那里？' },
+        { timestamp: '01:20:11', speaker: 'Marc', textZh: '大概不会。我甚至不太愿意离开加州。' },
+        { timestamp: '01:20:55', speaker: 'Jen', textZh: '太棒了，环球飞行经历已经让我为六个月的火星之旅做好了准备。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '是否计划前往火星',
+          question: { timestamp: '01:20:02', speaker: 'Jen', textZh: '你是否计划在火星旅行机会出现时前往那里？' },
+          answers: [
+            { timestamp: '01:20:11', speaker: 'Marc', textZh: '大概不会。我甚至不太愿意离开加州。' },
+            { timestamp: '01:20:55', speaker: 'Jen', textZh: '太棒了，环球飞行经历已经让我为六个月的火星之旅做好了准备。' },
+          ],
+          turns: [
+            { timestamp: '01:20:02', speaker: 'Jen', textZh: '你是否计划在火星旅行机会出现时前往那里？' },
+            { timestamp: '01:20:11', speaker: 'Marc', textZh: '大概不会。我甚至不太愿意离开加州。' },
+            { timestamp: '01:20:55', speaker: 'Jen', textZh: '太棒了，环球飞行经历已经让我为六个月的火星之旅做好了准备。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">Jen<');
+    expect(body).toContain('qa-speaker\\">Marc<');
+    expect(body).toContain('你是否计划在火星旅行机会出现时前往那里？');
+    expect(body).toContain('大概不会。我甚至不太愿意离开加州。');
+    expect(body).not.toContain('太棒了，环球飞行经历已经让我为六个月的火星之旅做好了准备。');
   });
 
   it('hides sections that are fully merged into the previous dialogue section', async () => {

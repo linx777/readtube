@@ -424,6 +424,73 @@ describe('mergeDialogueSectionBoundary', () => {
     ]);
   });
 
+  it('keeps a structured question at the start of the next section instead of orphaning its answers', () => {
+    const previous = createDialogueSlice({
+      section: {
+        startLabel: '58:39',
+        endLabel: '01:00:00',
+      },
+      turns: [
+        { timestamp: '58:39', speaker: 'Jen', textZh: '上一节里 Jen 的收尾。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '上一节主题',
+          turns: [
+            { timestamp: '58:39', speaker: 'Jen', textZh: '上一节里 Jen 的收尾。' },
+          ],
+        },
+      ],
+    });
+    const next = createDialogueSlice({
+      section: {
+        startLabel: '01:00:00',
+        endLabel: '01:03:00',
+        subtitle: '新问题',
+      },
+      turns: [
+        { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+        { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '新主题',
+          question: { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+          answers: [
+            { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+          ],
+          turns: [
+            { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+            { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+          ],
+        },
+      ],
+    });
+
+    const [mergedPrevious, remainingNext] = mergeDialogueSectionBoundary(previous, next, true);
+
+    expect(mergedPrevious.turns).toEqual([
+      { timestamp: '58:39', speaker: 'Jen', textZh: '上一节里 Jen 的收尾。' },
+    ]);
+    expect(remainingNext.turns).toEqual([
+      { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+      { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+    ]);
+    expect(remainingNext.groups).toEqual([
+      {
+        topicTitleZh: '新主题',
+        question: { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+        answers: [
+          { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+        ],
+        turns: [
+          { timestamp: '01:00:01', speaker: 'Jen', textZh: '新的问题是什么？' },
+          { timestamp: '01:00:20', speaker: 'Marc', textZh: '这是第一段回答。' },
+        ],
+      },
+    ]);
+  });
+
   it('merges same-speaker spillover between adjacent groups inside one section before rendering', () => {
     const previous = createDialogueSlice({
       turns: [

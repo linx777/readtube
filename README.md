@@ -42,6 +42,32 @@ GEMINI_DIALOGUE_MODEL=gemini-3.1-flash-lite-preview
 npm run check
 ```
 
+## 直接拉 transcript
+
+如果你想直接在终端里把字幕拉下来，可以运行：
+
+```bash
+npm run transcript:pull -- "https://www.youtube.com/watch?v=xRh2sVcNXQ8"
+```
+
+常见用法：
+
+```bash
+# 输出纯文本 transcript
+npm run transcript:pull -- xRh2sVcNXQ8
+
+# 输出带时间戳的 transcript
+npm run transcript:pull -- xRh2sVcNXQ8 --format timed
+
+# 导出为 srt / vtt / json
+npm run transcript:pull -- xRh2sVcNXQ8 --format srt --out ./tmp/video.srt
+npm run transcript:pull -- xRh2sVcNXQ8 --format vtt --out ./tmp/video.vtt
+npm run transcript:pull -- xRh2sVcNXQ8 --format json --out ./tmp/video.json
+
+# 查看可用字幕语言
+npm run transcript:pull -- xRh2sVcNXQ8 --list-languages
+```
+
 ## 部署到 Cloudflare Worker
 
 先登录 Cloudflare：

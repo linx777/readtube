@@ -51,6 +51,61 @@ const QUICK_SECTIONING_SLICE_SECONDS = 18 * 60;
 const MANUAL_SECTION_MODEL = 'manual_time_slice';
 const MANUAL_SECTION_SUBTITLE_PATTERN = /^Transcript Section (\d+)$/i;
 const MANUAL_SECTION_SUMMARY_PATTERN = /^Transcript content from (.+) to (.+)\.$/i;
+const FULL_DIALOGUE_LOADING_HINTS = [
+  {
+    title: 'Gemini 正在逐段翻译',
+    body: '按时间顺序处理片段，尽量保留原话语气。',
+  },
+  {
+    title: 'Gemini 正在对齐时间戳',
+    body: '翻译内容会和原始时间点一一对应，方便回跳视频。',
+  },
+  {
+    title: 'Gemini 正在打磨中文表达',
+    body: '会优先保持自然、直接、适合阅读的中文语感。',
+  },
+  {
+    title: 'Gemini 正在继续写入后续片段',
+    body: '剩余片段生成中，新的内容会陆续出现。',
+  },
+  {
+    title: 'Gemini 正在统一中文语气',
+    body: '会尽量让整篇中文读起来连续、自然、不生硬。',
+  },
+  {
+    title: 'Gemini 正在处理下一段内容',
+    body: '新的段落正在生成，很快会接到当前内容后面。',
+  },
+  {
+    title: 'Gemini 正在保留原文节奏',
+    body: '会尽量顺着原视频的推进顺序来呈现信息。',
+  },
+  {
+    title: 'Gemini 正在修整长句',
+    body: '较长的口语句子会被适度整理得更适合阅读。',
+  },
+  {
+    title: 'Gemini 正在生成后续卡片',
+    body: '新的时间片段与对应内容正在陆续补上。',
+  },
+  {
+    title: 'Gemini 正在核对片段顺序',
+    body: '确保内容顺序和时间线保持一致，阅读不会跳脱。',
+  },
+  {
+    title: 'Gemini 正在补齐剩余内容',
+    body: '还没出现的部分正在继续生成，请再稍等一下。',
+  },
+  {
+    title: 'Gemini 正在润色当前批次',
+    body: '这一批片段正在做最后的中文整理。',
+  },
+] as const;
+
+type LoadingHintCopy = {
+  title: string;
+  body: string;
+};
 
 function getUsableCachedTranscript(body: GenerateRequestBody, youtubeUrl: string): TranscriptBundle | null {
   if (!isTranscriptBundle(body.cachedTranscript)) {
@@ -98,6 +153,20 @@ function hasCustomGeminiKey(body: GenerateRequestBody): boolean {
 
 function shouldUseSharedArticleCache(body: GenerateRequestBody): boolean {
   return !hasCustomGeminiKey(body);
+}
+
+function articleHtmlShowsOriginalTranscriptFallback(articleHtml: string): boolean {
+  return articleHtml.includes('<span class="section-title">原文片段</span>');
+}
+
+function cachedArticleNeedsRefresh(
+  cachedArticle: { articleHtml: string; meta: Record<string, unknown> },
+): boolean {
+  return (
+    cachedArticle.meta.translationNeedsRefresh === true
+    || cachedArticle.meta.geminiTranslationComplete === false
+    || articleHtmlShowsOriginalTranscriptFallback(cachedArticle.articleHtml)
+  );
 }
 
 function getTranscriptProviderOptions(env: Env): TranscriptProviderOptions | undefined {
@@ -807,16 +876,29 @@ function renderSectionThemeHtml(section: SectionThemeCopy): string {
 function renderDialogueSliceMarkdown(
   section: SectionThemeCopy,
   turns: Array<{ timestamp: string; speaker: string; textZh: string }>,
-  groups: Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }> = [],
+  groups: Array<{
+    topicTitleZh: string;
+    question?: { timestamp: string; speaker: string; textZh: string };
+    answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+    turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  }> = [],
   showSpeakerNames = true,
 ): string {
   const mergedTurns = mergeConsecutiveDialogueTurns(turns);
   const mergedGroups = groups.length
     ? groups
-      .map((group) => ({
-        topicTitleZh: group.topicTitleZh.trim(),
-        turns: mergeConsecutiveDialogueTurns(group.turns),
-      }))
+      .map((group) => {
+        const normalizedAnswers = normalizeAnswerTurnsForRendering(group.question, group.answers ?? []);
+        const mergedGroupTurns = mergeConsecutiveDialogueTurns(group.turns);
+        return {
+          topicTitleZh: group.topicTitleZh.trim(),
+          question: group.question,
+          answers: normalizedAnswers,
+          turns: group.question && normalizedAnswers.length
+            ? [group.question, ...normalizedAnswers]
+            : mergedGroupTurns,
+        };
+      })
       .filter((group) => group.topicTitleZh && group.turns.length)
     : [];
   const speakerDisplayNames = showSpeakerNames
@@ -826,21 +908,114 @@ function renderDialogueSliceMarkdown(
   return [
     renderSectionThemeHtml(section),
     (mergedGroups.length
-      ? mergedGroups.map((group) => renderDialogueSubtopicHtml(group.topicTitleZh, group.turns, speakerDisplayNames, showSpeakerNames)).join('')
+      ? mergedGroups.map((group) => renderDialogueSubtopicHtml(group, speakerDisplayNames, showSpeakerNames)).join('')
       : renderDialogueTurnsHtml(mergedTurns, speakerDisplayNames, showSpeakerNames)),
   ].join('');
 }
 
-function renderDialogueSubtopicHtml(
-  title: string,
+function reconcileDialogueGroup(
+  group: {
+    topicTitleZh: string;
+    question?: { timestamp: string; speaker: string; textZh: string };
+    answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+    turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  },
   turns: Array<{ timestamp: string; speaker: string; textZh: string }>,
+): {
+  topicTitleZh: string;
+  question?: { timestamp: string; speaker: string; textZh: string };
+  answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+} {
+  const normalizedAnswers = mergeConsecutiveDialogueTurns(group.answers ?? []);
+  const normalizedGroup = {
+    topicTitleZh: group.topicTitleZh.trim(),
+    turns,
+  } as {
+    topicTitleZh: string;
+    question?: { timestamp: string; speaker: string; textZh: string };
+    answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+    turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  };
+
+  if (
+    group.question
+    && normalizedAnswers.length
+    && turns.length === 1 + normalizedAnswers.length
+    && isSameDialogueTurn(turns[0], group.question)
+    && normalizedAnswers.every((answer, index) => isSameDialogueTurn(turns[index + 1], answer))
+  ) {
+    normalizedGroup.question = group.question;
+    normalizedGroup.answers = normalizedAnswers;
+  }
+
+  return normalizedGroup;
+}
+
+function canRenderDialogueQaGroup(group: {
+  question?: { timestamp: string; speaker: string; textZh: string };
+  answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+}): group is {
+  question: { timestamp: string; speaker: string; textZh: string };
+  answers: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+} {
+  const answers = group.answers ?? [];
+  return (
+    Boolean(group.question)
+    && answers.length > 0
+    && group.turns.length === 1 + answers.length
+    && isSameDialogueTurn(group.turns[0], group.question!)
+    && answers.every((answer, index) => isSameDialogueTurn(group.turns[index + 1], answer))
+  );
+}
+
+function renderDialogueQaTurnHtml(
+  turn: { timestamp: string; speaker: string; textZh: string },
   speakerDisplayNames: Map<string, string>,
   showSpeakerNames: boolean,
 ): string {
+  const speaker = turn.speaker.trim();
+  const roleLabel = showSpeakerNames && speaker
+    ? (speakerDisplayNames.get(speaker) || getSpeakerDisplayName(speaker))
+    : '';
+  const speakerHtml = roleLabel
+    ? `<div class="qa-speaker">${escapeHtml(roleLabel)}</div>`
+    : '';
+
+  return [
+    '<section class="qa">',
+    '<div class="qa-meta">',
+    speakerHtml,
+    `<div class="qa-time"><span class="timestamp rail compact">${escapeHtml(turn.timestamp)}</span></div>`,
+    '</div>',
+    `<div class="qa-body"><p>${escapeHtml(turn.textZh)}</p></div>`,
+    '</section>',
+  ].join('');
+}
+
+function renderDialogueSubtopicHtml(
+  group: {
+    topicTitleZh: string;
+    question?: { timestamp: string; speaker: string; textZh: string };
+    answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+    turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+  },
+  speakerDisplayNames: Map<string, string>,
+  showSpeakerNames: boolean,
+): string {
+  const bodyHtml = canRenderDialogueQaGroup(group)
+    ? [
+        renderDialogueQaTurnHtml(group.question, speakerDisplayNames, showSpeakerNames),
+        ...group.answers.map((answer) => renderDialogueQaTurnHtml(answer, speakerDisplayNames, showSpeakerNames)),
+      ].join('')
+    : renderDialogueTurnsHtml(group.turns, speakerDisplayNames, showSpeakerNames);
+
   return [
     '<section class="dialogue-subtopic-block">',
-    `<h3 class="dialogue-subtopic-title">${escapeHtml(title)}</h3>`,
-    renderDialogueTurnsHtml(turns, speakerDisplayNames, showSpeakerNames),
+    `<h3 class="dialogue-subtopic-title">${escapeHtml(group.topicTitleZh)}</h3>`,
+    bodyHtml,
     '</section>',
   ].join('');
 }
@@ -880,6 +1055,10 @@ function getSpeakerFirstToken(speaker: string): string {
 }
 
 function getSpeakerDisplayName(speaker: string): string {
+  if (/^unknown$/i.test(speaker.trim())) {
+    return 'Host';
+  }
+
   return getSpeakerFirstToken(speaker);
 }
 
@@ -904,6 +1083,11 @@ function buildSpeakerDisplayNames(
   for (const turn of turns) {
     const normalized = turn.speaker.trim();
     if (!normalized || displayNames.has(normalized)) {
+      continue;
+    }
+
+    if (/^unknown$/i.test(normalized)) {
+      displayNames.set(normalized, 'Host');
       continue;
     }
 
@@ -945,6 +1129,38 @@ function mergeConsecutiveDialogueTurns(
   }
 
   return merged;
+}
+
+function normalizeAnswerTurnsForRendering(
+  question: { timestamp: string; speaker: string; textZh: string } | undefined,
+  answers: Array<{ timestamp: string; speaker: string; textZh: string }>,
+): Array<{ timestamp: string; speaker: string; textZh: string }> {
+  const mergedAnswers = mergeConsecutiveDialogueTurns(answers);
+  const questionSpeakerKey = question?.speaker.trim().toLowerCase() || '';
+  const seenSpeakers = new Set<string>();
+  const normalized: Array<{ timestamp: string; speaker: string; textZh: string }> = [];
+
+  for (const answer of mergedAnswers) {
+    const speaker = answer.speaker.trim();
+    if (!speaker) {
+      normalized.push(answer);
+      continue;
+    }
+
+    const speakerKey = speaker.toLowerCase();
+    if (seenSpeakers.has(speakerKey)) {
+      continue;
+    }
+
+    if (questionSpeakerKey && speakerKey === questionSpeakerKey && seenSpeakers.size > 0) {
+      continue;
+    }
+
+    seenSpeakers.add(speakerKey);
+    normalized.push(answer);
+  }
+
+  return normalized;
 }
 
 function isSameDialogueTurn(
@@ -994,14 +1210,10 @@ function mergeDialogueBoundaryTurns(
 }
 
 function normalizeDialogueGroups(
-  groups: Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }>,
-): Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }> {
+  groups: TranscriptDialogueSliceResult['groups'],
+): TranscriptDialogueSliceResult['groups'] {
   const normalized = groups
-    .map((group) => ({
-      ...group,
-      topicTitleZh: group.topicTitleZh.trim(),
-      turns: mergeConsecutiveDialogueTurns(group.turns),
-    }))
+    .map((group) => reconcileDialogueGroup(group, mergeConsecutiveDialogueTurns(group.turns)))
     .filter((group) => group.topicTitleZh && group.turns.length);
 
   let index = 1;
@@ -1011,14 +1223,8 @@ function normalizeDialogueGroups(
       normalized[index].turns,
     );
 
-    normalized[index - 1] = {
-      ...normalized[index - 1],
-      turns: mergedBoundary.previousTurns,
-    };
-    normalized[index] = {
-      ...normalized[index],
-      turns: mergedBoundary.nextTurns,
-    };
+    normalized[index - 1] = reconcileDialogueGroup(normalized[index - 1], mergedBoundary.previousTurns);
+    normalized[index] = reconcileDialogueGroup(normalized[index], mergedBoundary.nextTurns);
 
     if (!normalized[index].turns.length) {
       normalized.splice(index, 1);
@@ -1032,9 +1238,9 @@ function normalizeDialogueGroups(
 }
 
 function mergeMovedTurnIntoLastGroup(
-  groups: Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }>,
+  groups: TranscriptDialogueSliceResult['groups'],
   movedTurn: { timestamp: string; speaker: string; textZh: string } | null,
-): Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }> {
+): TranscriptDialogueSliceResult['groups'] {
   if (!movedTurn || !groups.length) {
     return groups;
   }
@@ -1055,19 +1261,16 @@ function mergeMovedTurnIntoLastGroup(
 
   return [
     ...groups.slice(0, -1),
-    {
-      ...lastGroup,
-      turns: lastTurn.speaker.trim() === movedTurn.speaker.trim()
-        ? [...lastGroup.turns.slice(0, -1), mergedLastTurn]
-        : [...lastGroup.turns, movedTurn],
-    },
+    reconcileDialogueGroup(lastGroup, lastTurn.speaker.trim() === movedTurn.speaker.trim()
+      ? [...lastGroup.turns.slice(0, -1), mergedLastTurn]
+      : [...lastGroup.turns, movedTurn]),
   ];
 }
 
 function removeMovedTurnFromFirstGroup(
-  groups: Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }>,
+  groups: TranscriptDialogueSliceResult['groups'],
   movedTurn: { timestamp: string; speaker: string; textZh: string } | null,
-): Array<{ topicTitleZh: string; turns: Array<{ timestamp: string; speaker: string; textZh: string }> }> {
+): TranscriptDialogueSliceResult['groups'] {
   if (!movedTurn || !groups.length) {
     return groups;
   }
@@ -1085,12 +1288,21 @@ function removeMovedTurnFromFirstGroup(
       }
 
       hasRemoved = true;
-      return {
-        ...group,
-        turns: group.turns.slice(1),
-      };
+      return reconcileDialogueGroup(group, group.turns.slice(1));
     })
     .filter((group) => group.turns.length);
+}
+
+function wouldOrphanStructuredQuestion(
+  next: TranscriptDialogueSliceResult,
+  movedTurn: { timestamp: string; speaker: string; textZh: string } | null,
+): boolean {
+  if (!movedTurn) {
+    return false;
+  }
+
+  const firstGroup = next.groups.at(0);
+  return Boolean(firstGroup?.question && isSameDialogueTurn(firstGroup.question, movedTurn));
 }
 
 function normalizeDialogueSliceTurns(
@@ -1124,17 +1336,21 @@ export function mergeDialogueSectionBoundary(
     return [normalizedPrevious, normalizedNext];
   }
 
+  if (wouldOrphanStructuredQuestion(normalizedNext, mergedBoundary.movedTurn)) {
+    return [normalizedPrevious, normalizedNext];
+  }
+
   return [
-    {
+    normalizeDialogueSliceTurns({
       ...normalizedPrevious,
       turns: mergedBoundary.previousTurns,
       groups: mergeMovedTurnIntoLastGroup(normalizedPrevious.groups, mergedBoundary.movedTurn),
-    },
-    {
+    }),
+    normalizeDialogueSliceTurns({
       ...normalizedNext,
       turns: mergedBoundary.nextTurns,
       groups: removeMovedTurnFromFirstGroup(normalizedNext.groups, mergedBoundary.movedTurn),
-    },
+    }),
   ];
 }
 
@@ -1216,16 +1432,36 @@ function renderDialogueLoadingHtml(): string {
     '正在继续生成内容',
     '努力生成高质量的剩余内容中，请稍等。。。',
     true,
+    0,
   );
+}
+
+function getLoadingHintCopy(hints: readonly LoadingHintCopy[], offset = 0): LoadingHintCopy {
+  if (!hints.length) {
+    return {
+      title: '正在继续生成内容',
+      body: '努力生成高质量的剩余内容中，请稍等。。。',
+    };
+  }
+
+  const normalizedOffset = ((offset % hints.length) + hints.length) % hints.length;
+  return hints[normalizedOffset];
 }
 
 function renderDialogueLoadingCardHtml(
   title: string,
   copy: string,
   trackAsGlobalLoading = false,
+  hintOffset?: number,
 ): string {
+  const attributes = [
+    'class="dialogue-loading-block"',
+    trackAsGlobalLoading ? 'data-dialogue-loading' : '',
+    typeof hintOffset === 'number' ? `data-loading-hint-offset="${hintOffset}"` : '',
+  ].filter(Boolean).join(' ');
+
   return [
-    `<section class="dialogue-loading-block"${trackAsGlobalLoading ? ' data-dialogue-loading' : ''}>`,
+    `<section ${attributes}>`,
     '<div class="dialogue-loading-head">',
     '<span class="dialogue-loading-dot" aria-hidden="true"></span>',
     `<p class="dialogue-loading-title">${escapeHtml(title)}</p>`,
@@ -1269,12 +1505,15 @@ function renderHiddenDialogueSectionHtml(sectionId: string): string {
   return `<div class="dialogue-section-block" data-dialogue-section-id="${escapeHtml(sectionId)}" hidden aria-hidden="true"></div>`;
 }
 
-function renderDialogueSectionPreviewHtml(section: TranscriptSection): string {
+function renderDialogueSectionPreviewHtml(section: TranscriptSection, hintOffset: number): string {
+  const hint = getLoadingHintCopy(FULL_DIALOGUE_LOADING_HINTS, hintOffset);
   return [
     renderSectionThemeHtml(section),
     renderDialogueLoadingCardHtml(
-      'Gemini 正在打磨中文表达',
-      '会优先保持自然、直接、适合阅读的中文语感。',
+      hint.title,
+      hint.body,
+      false,
+      hintOffset,
     ),
   ].join('');
 }
@@ -1363,34 +1602,41 @@ export async function handleGenerateRoute(
           if (sharedArticleCacheEnabled && requestedVideoId) {
             const cachedArticle = await readCachedGeneratedArticle(env, requestedVideoId, readingMode);
             if (cachedArticle) {
-              const cachedCloudTranscript = cachedTranscript
-                ?? await readCachedTranscriptBundle(env, requestedVideoId);
-
-              if (cachedCloudTranscript) {
-                await sendSseEvent(writer, 'cache', {
-                  videoId: cachedCloudTranscript.videoId,
-                  bundle: cachedCloudTranscript,
+              if (cachedArticleNeedsRefresh(cachedArticle)) {
+                logGenerate('cloud_article_cache_refresh_required', {
+                  videoId: requestedVideoId,
+                  readingMode,
                 });
+              } else {
+                const cachedCloudTranscript = cachedTranscript
+                  ?? await readCachedTranscriptBundle(env, requestedVideoId);
+
+                if (cachedCloudTranscript) {
+                  await sendSseEvent(writer, 'cache', {
+                    videoId: cachedCloudTranscript.videoId,
+                    bundle: cachedCloudTranscript,
+                  });
+                }
+
+                logGenerate('cloud_article_cache_hit', {
+                  videoId: requestedVideoId,
+                  readingMode,
+                });
+
+                await sendSseEvent(writer, 'meta', {
+                  ...cachedArticle.meta,
+                  stage: 'cloud_article_cache_hit',
+                  statusText: '命中云端内容缓存，正在回填结果',
+                });
+                await emitHtml('article', cachedArticle.articleHtml);
+                await sendSseEvent(writer, 'meta', {
+                  ...cachedArticle.meta,
+                  stage: 'complete',
+                  statusText: '内容已完成',
+                });
+                await sendSseEvent(writer, 'done', { ok: true });
+                return;
               }
-
-              logGenerate('cloud_article_cache_hit', {
-                videoId: requestedVideoId,
-                readingMode,
-              });
-
-              await sendSseEvent(writer, 'meta', {
-                ...cachedArticle.meta,
-                stage: 'cloud_article_cache_hit',
-                statusText: '命中云端内容缓存，正在回填结果',
-              });
-              await emitHtml('article', cachedArticle.articleHtml);
-              await sendSseEvent(writer, 'meta', {
-                ...cachedArticle.meta,
-                stage: 'complete',
-                statusText: '内容已完成',
-              });
-              await sendSseEvent(writer, 'done', { ok: true });
-              return;
             }
           }
 
@@ -1401,6 +1647,7 @@ export async function handleGenerateRoute(
           let translatedTitleZh = '';
           let summaryZh = '';
           let geminiTranslationComplete = false;
+          let translationNeedsRefresh = false;
 
           if (cachedTranscript) {
             transcriptBundle = cachedTranscript;
@@ -1613,6 +1860,7 @@ export async function handleGenerateRoute(
               }
 
               const appError = AppError.from(error);
+              translationNeedsRefresh = true;
               logGenerate('quick_flow_failed', {
                 videoId: transcriptBundle.videoId,
                 code: appError.code,
@@ -1737,7 +1985,7 @@ export async function handleGenerateRoute(
                   'dialogue',
                   wrapDialogueSectionHtml(
                     sectionIds[index],
-                    renderDialogueSectionPreviewHtml(sections[index]),
+                    renderDialogueSectionPreviewHtml(sections[index], index + 1),
                   ),
                   sectionIds[index],
                 );
@@ -1780,6 +2028,9 @@ export async function handleGenerateRoute(
                     readingMode,
                     request.signal,
                   );
+                  if (translatedSlice.usedFallback) {
+                    translationNeedsRefresh = true;
+                  }
                   if (pendingDialogueSlice) {
                     const [readySlice, nextPendingSlice] = mergeDialogueSectionBoundary(
                       pendingDialogueSlice,
@@ -1810,6 +2061,7 @@ export async function handleGenerateRoute(
                   }
 
                   allSectionsTranslated = false;
+                  translationNeedsRefresh = true;
                   await flushPendingDialogueSlice();
                   const sliceError = AppError.from(error);
                   logGenerate('dialogue_slice_failed', {
@@ -1846,6 +2098,7 @@ export async function handleGenerateRoute(
                 throw error;
               }
 
+              translationNeedsRefresh = true;
               const appError = AppError.from(error);
               logGenerate('insights_failed', {
                 videoId: transcriptBundle.videoId,
@@ -1891,9 +2144,10 @@ export async function handleGenerateRoute(
             translatedTitleZh,
             summaryZh,
             geminiTranslationComplete,
+            translationNeedsRefresh,
           };
 
-          if (sharedArticleCacheEnabled && geminiTranslationComplete) {
+          if (sharedArticleCacheEnabled && geminiTranslationComplete && !translationNeedsRefresh) {
             const renderedArticleHtml = getRenderedArticleHtml();
             if (renderedArticleHtml.trim()) {
               ctx.waitUntil(
