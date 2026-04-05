@@ -2,11 +2,24 @@ const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 const HOT_CARD_PREFLIGHT_DELAY_MS = 700;
 const HOT_CARD_LOADING_TITLE = '正在打开热门内容';
 const HOT_CARD_LOADING_BODY = '我们正在为您加载已准备好的精选内容，请稍等片刻。';
+const SITE_NAME = 'ReadTube';
+const SITE_TITLE = 'ReadTube | YouTube 字幕阅读器与 AI 摘要';
+const SITE_DESCRIPTION = '把 YouTube 视频字幕整理成适合中文阅读的长文内容，支持原始字幕抓取、AI 摘要整理、热门浏览与本地缓存。';
+const SITE_THEME_COLOR = '#f5f2ea';
 const READING_MODE_OPTIONS = [
   { value: 'quick', label: '速读版', note: '（即将上线）', disabled: true },
   { value: 'full', label: '详细版', note: '', disabled: false },
 ] as const;
 const DEFAULT_READING_MODE = READING_MODE_OPTIONS.find((option) => !option.disabled)?.value ?? 'full';
+export const DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT = 3;
+
+export function formatLocalDayKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
 const BRAND_ICON_BASE64 = [
   'iVBORw0KGgoAAAANSUhEUgAAAVgAAAEQCAYAAAD1Z2xBAAAKsWlDQ1BJQ0MgUHJvZmlsZQAASImVlwk4lHsXwP/v+86+2AYhy9i3yBIGWcbYxp6dNmNmMJYxDaOSNkmFm5IklEvdkKLbgtwWadF2hUp7l6RS3a4WqVS+F4/Rvd/zfd/znef5z/k9Z87//M85z/t/n/MCQFXniETJsBwAKcJ0cbCXGz0yKpqOfwkQQAaywBbocLhpImZQkB9AZVr/XT72AmhC3zSbiPXv//9Xkefx07gAQEEox/LSuCkoH0fXR65InA4Acgi16y5PF01wF8qKYjRBlJ9OcPwUf5rg2EnGUCZ9QoNZKNMBIFA4HHE8AJQ5qJ2ewY1H41AmarAQ8gRClLNQdk5JSeWhfAplI9RHhPJEfEbsD3Hi/xYzVhqTw4mX8lQtk0JwF6SJkjkr/892/G9JSZZMn2GILkqC2DsY1Qpoz54mpfpKWRgbEDjNAt6k/yQn',
   'SLzDppmbxoqe5rTkEPY08zjuvtI4yQF+0xwn8JT6CNLZodPMT/MImWZxarD03DgxiznNHPFMDpKkMKk9gc+Wxs9MCI2Y5gxBeIA0t6QQ3xkfltQulgRLa+ELvdxmzvWU9iEl7YfaBWzp3vSEUG9pHzgz+fOFzJmYaZHS3Hh8d48ZnzCpvyjdTXqWKDlI6s9P9pLa0zJCpHvT0YdzZm+QtIeJHJ+gaQYsYA2sQDgIA3QQBIIB2tF0/or0iUJYqaKVYkF8Qjqdid42Pp0t5JrPoVtZWNkCMHF3px6N968m7yQkv2TGtu0sAG6pqHHzjM1lAwCNqJbVmrEZFAMgsx2A9o1ciThjyoaZ+MECEvpOUASqQBPoAiNghuZoCxyBK/AAPmiOoSAKLAFckABSgBgsB1lgPcgF+WAb2AnKQCXYB2rBYXAUNINT4By4BK6BLnAbPAB9YBC8AsPgIxiDIAgPUSEapAppQfqQKWQFMSBnyAPyg4KhKCgG',
@@ -285,6 +298,61 @@ const BRAND_ICON_BASE64 = [
 ].join('');
 const BRAND_ICON_DATA_URI = `data:image/png;base64,${BRAND_ICON_BASE64}`;
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function escapeJsonForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026');
+}
+
+function decodeBase64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function buildStructuredData(canonicalUrl: string, iconUrl: string): string {
+  return escapeJsonForHtml({
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: SITE_NAME,
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'Web',
+    inLanguage: 'zh-CN',
+    url: canonicalUrl,
+    image: iconUrl,
+    description: SITE_DESCRIPTION,
+    featureList: [
+      'YouTube 视频字幕抓取',
+      'AI 中文摘要与分段阅读',
+      '热门视频浏览',
+      '本地缓存与继续阅读',
+    ],
+  });
+}
+
+export function renderBrandIconPng(): ArrayBuffer {
+  const bytes = decodeBase64ToUint8Array(BRAND_ICON_BASE64);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+
+  new Uint8Array(buffer).set(bytes);
+
+  return buffer;
+}
+
 function renderShowcaseArticle(): string {
   return ``;
 }
@@ -364,7 +432,7 @@ function renderStyles(): string {
     }
 
     .shell {
-      --reader-content-width: 1080px;
+      --reader-content-width: 734px;
       --reader-frame-gutter: 42px;
       width: 100%;
       min-height: calc(100vh - 28px);
@@ -377,11 +445,11 @@ function renderStyles(): string {
     }
 
     .shell[data-reader-layout="focus"] {
-      --reader-content-width: 920px;
+      --reader-content-width: 782px;
     }
 
     .shell[data-reader-layout="wide"] {
-      --reader-content-width: 1240px;
+      --reader-content-width: 1054px;
     }
 
     .topbar {
@@ -584,7 +652,7 @@ function renderStyles(): string {
       align-items: center;
       gap: 30px;
       color: #171717;
-      font: 600 20px/1 var(--sans);
+      font: 600 15px/1 var(--sans);
       letter-spacing: 0.16em;
       text-transform: uppercase;
     }
@@ -605,7 +673,7 @@ function renderStyles(): string {
     .topnav-button {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       min-height: 0;
       padding: 0;
       border: 0;
@@ -623,12 +691,12 @@ function renderStyles(): string {
     }
 
     .topnav-button.settings-trigger {
-      gap: 8px;
+      gap: 6px;
     }
 
     .topnav-icon {
-      width: 20px;
-      height: 20px;
+      width: 15px;
+      height: 15px;
       flex: none;
       stroke: currentColor;
       fill: none;
@@ -639,8 +707,8 @@ function renderStyles(): string {
 
     .topnav-button.settings-trigger::after {
       content: "";
-      width: 7px;
-      height: 7px;
+      width: 5.6px;
+      height: 5.6px;
       border-right: 1.5px solid currentColor;
       border-bottom: 1.5px solid currentColor;
       transform: rotate(45deg) translateY(-1px);
@@ -827,7 +895,7 @@ function renderStyles(): string {
 
     .app-body {
       display: grid;
-      grid-template-columns: 650px minmax(0, 1fr);
+      grid-template-columns: 416px minmax(0, 1fr);
       height: calc((100% - 52px) * 0.95);
       overflow: hidden;
       border-bottom-left-radius: 32px;
@@ -918,7 +986,7 @@ function renderStyles(): string {
     .cache-empty-kicker {
       margin: 0;
       color: rgba(109, 87, 60, 0.88);
-      font: 700 11px/1 var(--sans);
+      font: 700 9px/1 var(--sans);
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
@@ -926,14 +994,14 @@ function renderStyles(): string {
     .cache-empty-title {
       margin: 0;
       color: var(--accent-strong);
-      font: 600 24px/1.18 var(--sans);
+      font: 600 19.2px/1.18 var(--sans);
       letter-spacing: -0.02em;
     }
 
     .cache-empty-copy {
       margin: 0;
       color: var(--muted-strong);
-      font: 400 15px/1.6 var(--sans);
+      font: 400 12px/1.6 var(--sans);
       max-width: 30ch;
     }
 
@@ -956,7 +1024,7 @@ function renderStyles(): string {
     .cache-thumb {
       position: relative;
       width: 100%;
-      min-height: 232px;
+      min-height: 185.6px;
       border-radius: 24px;
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1021,7 +1089,7 @@ function renderStyles(): string {
     .cache-item-title {
       margin: 0;
       color: var(--accent-strong);
-      font: 600 22px/1.24 var(--sans);
+      font: 600 17.6px/1.24 var(--sans);
       letter-spacing: -0.02em;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -1031,7 +1099,7 @@ function renderStyles(): string {
 
     .cache-item-meta {
       color: var(--muted);
-      font-size: 14px;
+      font-size: 11.2px;
       line-height: 1.4;
       display: flex;
       flex-wrap: wrap;
@@ -1047,8 +1115,11 @@ function renderStyles(): string {
       grid-template-rows: minmax(480px, 1fr) auto;
       min-width: 0;
       min-height: 0;
+      height: 100%;
+      max-height: 100%;
       overflow-y: auto;
       overflow-x: hidden;
+      overscroll-behavior-y: contain;
     }
 
     .article-wrap {
@@ -1204,6 +1275,7 @@ function renderStyles(): string {
     }
 
     .landing-center {
+      --landing-scale: 0.8;
       position: relative;
       z-index: 1;
       width: min(1160px, 100%);
@@ -1211,6 +1283,8 @@ function renderStyles(): string {
       justify-items: center;
       text-align: center;
       gap: 72px;
+      transform: scale(var(--landing-scale));
+      transform-origin: top center;
     }
 
     .hero-copy {
@@ -1236,7 +1310,7 @@ function renderStyles(): string {
     .hero-title {
       margin: 0;
       font-family: var(--font-serif);
-      font-size: clamp(94px, 10vw, 146px);
+      font-size: clamp(60.16px, 6.4vw, 93.44px);
       font-weight: 700;
       line-height: 0.92;
       letter-spacing: -0.06em;
@@ -1248,7 +1322,7 @@ function renderStyles(): string {
     }
 
     .hero-title-icon {
-      width: clamp(111px, 10.5vw, 165px);
+      width: clamp(88.8px, 8.4vw, 132px);
       height: auto;
       flex: none;
       display: block;
@@ -1275,7 +1349,7 @@ function renderStyles(): string {
 
     .hero-title-dot {
       position: absolute;
-      left: 6.2%;
+      left: 12%;
       top: 50%;
       width: 18px;
       height: 18px;
@@ -1291,7 +1365,7 @@ function renderStyles(): string {
       max-width: 980px;
       color: #4a4a4a;
       font-family: var(--font-serif);
-      font-size: clamp(38px, 4vw, 54px);
+      font-size: clamp(24.32px, 2.56vw, 34.56px);
       font-weight: 400;
       line-height: 1.16;
       letter-spacing: -0.025em;
@@ -1343,13 +1417,13 @@ function renderStyles(): string {
 
     input[type="url"] {
       width: 100%;
-      height: 94px;
+      height: 84.6px;
       border: 0;
       background: #ffffff;
       color: #1a1a1a;
       border-radius: 999px;
       padding: 0 34px 0 86px;
-      font: 400 30px/1.2 var(--sans);
+      font: 400 24px/1.2 var(--sans);
       letter-spacing: -0.01em;
       outline: none;
       box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1);
@@ -1389,7 +1463,7 @@ function renderStyles(): string {
       border: 1px solid rgba(109, 102, 93, 0.16);
       background: rgba(255, 255, 255, 0.46);
       color: rgba(83, 76, 68, 0.86);
-      font: 500 22px/1 var(--sans);
+      font: 500 17.6px/1 var(--sans);
       letter-spacing: -0.01em;
       text-transform: none;
       white-space: nowrap;
@@ -1465,7 +1539,7 @@ function renderStyles(): string {
       border: 0;
       background: transparent;
       color: #6b7280;
-      font: 500 22px/1 var(--sans);
+      font: 500 15.84px/1 var(--sans);
       letter-spacing: 0;
       text-transform: none;
       box-shadow: none;
@@ -1490,7 +1564,7 @@ function renderStyles(): string {
       border-radius: 32px;
       background: #2d3436;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-      font-size: 18px;
+      font-size: 17.28px;
       font-weight: 700;
       letter-spacing: 0.18em;
       transition:
@@ -1934,7 +2008,7 @@ function renderStyles(): string {
       width: min(var(--reader-content-width), 100%);
       margin: 0 auto;
       font-family: var(--sans);
-      font-size: calc(18px * var(--reader-copy-scale));
+      font-size: calc(14.4px * var(--reader-copy-scale));
       line-height: 1.8;
       color: var(--reader-copy-color);
     }
@@ -1956,7 +2030,7 @@ function renderStyles(): string {
     .article h1 {
       margin-bottom: 34px;
       font-family: var(--serif);
-      font-size: clamp(42px, 5vw, 58px);
+      font-size: clamp(33.6px, 4vw, 46.4px);
       line-height: 1.06;
     }
 
@@ -1970,7 +2044,7 @@ function renderStyles(): string {
       margin: 0;
       max-width: none;
       font-family: var(--sans);
-      font-size: clamp(54px, 7vw, 88px);
+      font-size: clamp(43.2px, 5.6vw, 70.4px);
       line-height: 0.94;
       letter-spacing: -0.07em;
       color: var(--reader-title-color);
@@ -1982,7 +2056,7 @@ function renderStyles(): string {
       margin-bottom: 40px;
       font-family: var(--sans);
       color: var(--reader-muted-color);
-      font-size: 15px;
+      font-size: 12px;
       line-height: 1.8;
       letter-spacing: 0.02em;
     }
@@ -1998,7 +2072,7 @@ function renderStyles(): string {
       max-width: none;
       color: rgba(112, 105, 95, 0.95);
       font-family: var(--serif);
-      font-size: clamp(28px, 3vw, 42px);
+      font-size: clamp(22.4px, 2.4vw, 33.6px);
       line-height: 1.28;
       font-style: italic;
       letter-spacing: -0.01em;
@@ -2022,7 +2096,8 @@ function renderStyles(): string {
 
     .article-media-image {
       display: block;
-      width: 100%;
+      width: 80%;
+      margin-inline: auto;
       aspect-ratio: 16 / 10;
       object-fit: cover;
       border-radius: 30px;
@@ -2036,7 +2111,7 @@ function renderStyles(): string {
       margin: 0 0 10px;
       color: var(--reader-muted-color);
       font-family: var(--sans);
-      font-size: 12px;
+      font-size: 10px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
     }
@@ -2044,7 +2119,7 @@ function renderStyles(): string {
     .article h2 {
       margin-top: 72px;
       margin-bottom: 22px;
-      font-size: clamp(24px, 3.2vw, 32px);
+      font-size: clamp(19.2px, 2.56vw, 25.6px);
       line-height: 1.26;
     }
 
@@ -2054,7 +2129,7 @@ function renderStyles(): string {
 
     .article .section-theme-title {
       margin: 0;
-      font-size: clamp(22px, 2.8vw, 28px);
+      font-size: clamp(17.6px, 2.24vw, 22.4px);
       line-height: 1.45;
       letter-spacing: -0.02em;
     }
@@ -2081,7 +2156,7 @@ function renderStyles(): string {
 
     .article .dialogue-subtopic-title {
       margin: 0 0 12px;
-      font-size: clamp(18px, 2.2vw, 22px);
+      font-size: clamp(14.4px, 1.76vw, 17.6px);
       line-height: 1.35;
       color: #3f352c;
       letter-spacing: -0.01em;
@@ -2114,7 +2189,7 @@ function renderStyles(): string {
       background: var(--reader-soft-surface);
       color: var(--muted-strong);
       font-family: var(--sans);
-      font-size: 12px;
+      font-size: 10px;
       line-height: 1;
       letter-spacing: 0.06em;
       white-space: nowrap;
@@ -2153,7 +2228,7 @@ function renderStyles(): string {
 
     .article .timestamp.compact {
       padding: 4px 8px;
-      font-size: 11px;
+      font-size: 9px;
       min-width: 72px;
     }
 
@@ -2175,7 +2250,7 @@ function renderStyles(): string {
       margin: 6px 12px 0 0;
       color: var(--accent-strong);
       font-family: var(--sans);
-      font-size: 68px;
+      font-size: 54.4px;
       line-height: 0.82;
       font-weight: 800;
     }
@@ -2189,7 +2264,7 @@ function renderStyles(): string {
       padding: 12px 0;
       border-top: 1px solid rgba(33, 24, 17, 0.06);
       font-family: var(--sans);
-      font-size: calc(16px * var(--reader-copy-scale));
+      font-size: calc(12.8px * var(--reader-copy-scale));
       line-height: 1.9;
     }
 
@@ -2255,7 +2330,7 @@ function renderStyles(): string {
 
     .article .transcript-body {
       font-family: var(--sans);
-      font-size: calc(17px * var(--reader-copy-scale));
+      font-size: calc(13.6px * var(--reader-copy-scale));
       line-height: 1.8;
       color: var(--reader-copy-color);
       opacity: 0.9;
@@ -2271,7 +2346,7 @@ function renderStyles(): string {
 
     .article blockquote p {
       margin: 0;
-      font-size: calc(19px * var(--reader-copy-scale));
+      font-size: calc(15.2px * var(--reader-copy-scale));
       line-height: 1.9;
       opacity: 0.92;
     }
@@ -2478,7 +2553,7 @@ function renderStyles(): string {
 
     @media (max-width: 1100px) {
       .app-body {
-        grid-template-columns: minmax(400px, 500px) minmax(0, 1fr);
+        grid-template-columns: minmax(256px, 320px) minmax(0, 1fr);
         min-height: calc((100vh - 52px) * 0.9);
       }
 
@@ -2497,8 +2572,14 @@ function renderStyles(): string {
     }
 
     @media (max-width: 920px) {
+      html, body {
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
       .page {
-        padding: 42px;
+        padding: 0;
+        overflow: visible;
       }
 
       .shell {
@@ -2514,7 +2595,7 @@ function renderStyles(): string {
 
       .topnav {
         gap: 18px;
-        font-size: 30px;
+        font-size: 15px;
       }
 
       .app-body {
@@ -2524,12 +2605,57 @@ function renderStyles(): string {
         overflow: visible;
       }
 
+      .app-body[data-view="article"] .reader-tooldeck {
+        display: none;
+      }
+
       .sidebar-stack {
+        display: none;
         border-right: 0;
         border-bottom: 1px solid rgba(122, 111, 96, 0.1);
         overflow: visible;
         padding-left: 42px;
         padding-right: 42px;
+      }
+
+      .saved-tabs {
+        display: none;
+      }
+
+      .cache-empty-kicker {
+        font-size: 9px;
+      }
+
+      .cache-empty-title {
+        font-size: 19.2px;
+      }
+
+      .cache-empty-copy {
+        font-size: 12px;
+      }
+
+      .cache-thumb {
+        min-height: 185.6px;
+      }
+
+      .cache-item-title {
+        font-size: 17.6px;
+      }
+
+      .cache-item-meta {
+        font-size: 11.2px;
+      }
+
+      .hero-title {
+        font-size: clamp(75.2px, 8vw, 116.8px);
+      }
+
+      .hero-title-icon {
+        width: clamp(88.8px, 8.4vw, 132px);
+      }
+
+      .hero-subtitle {
+        font-size: clamp(30.4px, 3.2vw, 43.2px);
       }
 
       .masthead {
@@ -2550,6 +2676,14 @@ function renderStyles(): string {
         padding: 24px 24px 120px;
       }
 
+      .article {
+        font-size: calc(14.4px * var(--reader-copy-scale));
+      }
+
+      .article h1 {
+        font-size: clamp(33.6px, 4vw, 46.4px);
+      }
+
       .article-hero {
         gap: 24px;
         margin-bottom: 46px;
@@ -2557,16 +2691,66 @@ function renderStyles(): string {
 
       .article-hero h1 {
         max-width: 100%;
-        font-size: clamp(42px, 10vw, 72px);
+        font-size: clamp(33.6px, 8vw, 57.6px);
+      }
+
+      .article h1 + p,
+      .article .transcript-kicker {
+        font-size: 12px;
       }
 
       .article-hero .transcript-kicker {
         max-width: 100%;
-        font-size: clamp(24px, 4.6vw, 34px);
+        font-size: clamp(19.2px, 3.68vw, 27.2px);
       }
 
       .article-media {
         padding-bottom: 0;
+      }
+
+      .article-media-image {
+        width: 80%;
+        margin-inline: auto;
+      }
+
+      .article .reader-label {
+        font-size: 10px;
+      }
+
+      .article h2 {
+        font-size: clamp(19.2px, 2.56vw, 25.6px);
+      }
+
+      .article .section-theme-title {
+        font-size: clamp(17.6px, 2.24vw, 22.4px);
+      }
+
+      .article .dialogue-subtopic-title {
+        font-size: clamp(14.4px, 1.76vw, 17.6px);
+      }
+
+      .article .timestamp {
+        font-size: 10px;
+      }
+
+      .article .timestamp.compact {
+        font-size: 9px;
+      }
+
+      .article .dropcap {
+        font-size: 54.4px;
+      }
+
+      .article .qa {
+        font-size: calc(12.8px * var(--reader-copy-scale));
+      }
+
+      .article .transcript-body {
+        font-size: calc(13.6px * var(--reader-copy-scale));
+      }
+
+      .article blockquote p {
+        font-size: calc(15.2px * var(--reader-copy-scale));
       }
 
       .reader-tooldeck {
@@ -2574,9 +2758,24 @@ function renderStyles(): string {
       }
     }
 
+    @media (max-height: 900px) {
+      .landing-panel {
+        height: auto;
+        max-height: none;
+        overflow-y: auto;
+      }
+
+      .masthead {
+        min-height: auto;
+        place-items: start center;
+        overflow: visible;
+        padding-bottom: 48px;
+      }
+    }
+
     @media (max-width: 640px) {
       .page {
-        padding: 42px;
+        padding: 0;
       }
 
       .shell {
@@ -2628,6 +2827,7 @@ function renderStyles(): string {
       }
 
       .reader-tooldeck {
+        display: none;
         top: auto;
         right: 50%;
         bottom: 94px;
@@ -2652,7 +2852,7 @@ function renderStyles(): string {
       }
 
       .hero-title {
-        font-size: 76px;
+        font-size: 48.64px;
       }
 
       .hero-wordmark {
@@ -2668,7 +2868,7 @@ function renderStyles(): string {
       }
 
       .hero-title-icon {
-        width: 87px;
+        width: 69.6px;
       }
 
       .hero-title-rail {
@@ -2688,7 +2888,7 @@ function renderStyles(): string {
 
       .hero-subtitle {
         max-width: 460px;
-        font-size: 24px;
+        font-size: 15.36px;
       }
 
       .article-hero {
@@ -2701,15 +2901,15 @@ function renderStyles(): string {
       }
 
       .article-hero .transcript-kicker {
-        font-size: clamp(22px, 7vw, 28px);
+        font-size: clamp(17.6px, 5.6vw, 22.4px);
       }
 
       .article-media-image {
-        border-radius: 24px;
+        border-radius: 19.2px;
       }
 
       input[type="url"] {
-        font-size: 18px;
+        font-size: 11.52px;
       }
 
       .hero-tools {
@@ -2723,7 +2923,7 @@ function renderStyles(): string {
       .topic-pill {
         min-height: 38px;
         padding: 0 14px;
-        font-size: 14px;
+        font-size: 8.96px;
       }
 
       .mode-pill {
@@ -2777,6 +2977,7 @@ function renderScript(): string {
     const VIDEO_VIEW_ENDPOINT = '/api/view';
     const GEMINI_API_KEY_STORAGE_KEY = 'xvc:settings:gemini-api-key';
     const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+    const DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT = ${JSON.stringify(DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT)};
     const FULL_GEMINI_LOADING_HINTS = {
       analyzing: [
         {
@@ -2963,6 +3164,7 @@ function renderScript(): string {
     const topbar = document.querySelector('[data-topbar]');
     const articleWrap = document.querySelector('[data-article-wrap]');
     const readerShell = document.querySelector('.reader-shell');
+    const mobileViewportMedia = window.matchMedia('(max-width: 920px)');
     const readingTopbar = document.querySelector('[data-reading-topbar]');
     const backButton = document.querySelector('[data-back-button]');
     const brandButton = document.querySelector('[data-brand-home]');
@@ -3012,6 +3214,7 @@ function renderScript(): string {
     let activeReaderLayout = 'standard';
     let activeReadingProgressPointerId = null;
     let customGeminiApiKey = '';
+    let activeRequestUsesCustomGeminiKey = false;
     let loadingHintTimer = null;
     let loadingHintStage = '';
     let loadingHintIndex = 0;
@@ -3020,6 +3223,8 @@ function renderScript(): string {
     let currentRenderedReadingMode = ${JSON.stringify(DEFAULT_READING_MODE)};
     let hotItems = [];
     let hotItemsLoaded = false;
+    let hotItemsLoading = false;
+    let hotItemsLoadFailed = false;
 
     function usesGeminiReadingFlow(mode) {
       return READING_MODE_OPTIONS.some((option) => option.value === normalizeReadingMode(mode));
@@ -3124,6 +3329,30 @@ function renderScript(): string {
       topbar.dataset.view = view === 'article' ? 'article' : 'search';
     }
 
+    function usesPageScrollForMobile() {
+      return mobileViewportMedia.matches;
+    }
+
+    function getViewportScrollMetrics() {
+      const scrollRoot = document.scrollingElement || document.documentElement;
+      const maxScroll = Math.max(0, scrollRoot.scrollHeight - window.innerHeight);
+      const currentScroll = Math.max(0, window.scrollY || scrollRoot.scrollTop || 0);
+
+      return {
+        maxScroll,
+        scrollTop: Math.min(currentScroll, maxScroll),
+      };
+    }
+
+    function scrollViewportTo(top) {
+      if (!usesPageScrollForMobile()) {
+        return;
+      }
+
+      const nextTop = Number.isFinite(top) ? Math.max(0, top) : 0;
+      window.scrollTo({ top: nextTop, left: 0, behavior: 'auto' });
+    }
+
     function setReadingProgressValue(value) {
       if (!readingProgress) {
         return;
@@ -3146,6 +3375,13 @@ function renderScript(): string {
       }
 
       const normalized = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (usesPageScrollForMobile()) {
+        const { maxScroll } = getViewportScrollMetrics();
+        scrollViewportTo(maxScroll <= 1 ? 0 : normalized * maxScroll);
+        setReadingProgressValue(maxScroll <= 1 ? 1 : normalized);
+        return;
+      }
+
       const maxScroll = articleWrap.scrollHeight - articleWrap.clientHeight;
       articleWrap.scrollTop = maxScroll <= 1 ? 0 : normalized * maxScroll;
       setReadingProgressValue(maxScroll <= 1 ? 1 : normalized);
@@ -3238,6 +3474,17 @@ function renderScript(): string {
 
       if (!hasArticleContent) {
         setReadingProgressValue(0);
+        return;
+      }
+
+      if (usesPageScrollForMobile()) {
+        const { maxScroll, scrollTop } = getViewportScrollMetrics();
+        if (maxScroll <= 1) {
+          setReadingProgressValue(1);
+          return;
+        }
+
+        setReadingProgressValue(scrollTop / maxScroll);
         return;
       }
 
@@ -3464,6 +3711,18 @@ function renderScript(): string {
       return TRANSLATION_CACHE_PREFIX + normalizedMode + ':' + videoId;
     }
 
+    function buildLocalDayKey(timestamp) {
+      const date = typeof timestamp === 'number'
+        ? new Date(timestamp)
+        : (timestamp instanceof Date ? timestamp : new Date());
+
+      return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+      ].join('-');
+    }
+
     function clearLegacyTranscriptCaches() {
       const keysToRemove = [];
 
@@ -3570,9 +3829,68 @@ function renderScript(): string {
       return meta.geminiTranslationComplete === true || meta.translationNeedsRefresh === true;
     }
 
+    function shouldCountTowardsDailySuccessfulGeminiTranslationLimit(meta) {
+      return Boolean(
+        meta
+        && typeof meta === 'object'
+        && meta.consumesDailyGeminiTranslationLimit === true,
+      );
+    }
+
+    async function recordSuccessfulGeminiTranslationToday() {
+      try {
+        await fetch('/api/gemini-translation-usage', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            localDayKey: buildLocalDayKey(Date.now()),
+          }),
+          keepalive: true,
+        });
+      } catch {
+      }
+    }
+
+    async function fetchDailySuccessfulGeminiTranslationUsage() {
+      const localDayKey = buildLocalDayKey(Date.now());
+
+      const response = await fetch(
+        '/api/gemini-translation-usage?localDayKey=' + encodeURIComponent(localDayKey),
+        {
+          method: 'GET',
+          headers: {
+            accept: 'application/json',
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error('usage_request_failed');
+      }
+
+      const payload = await response.json();
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        throw new Error('usage_payload_invalid');
+      }
+
+      const limit = typeof payload.limit === 'number' && Number.isFinite(payload.limit)
+        ? Math.max(0, Math.floor(payload.limit))
+        : DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT;
+      const remaining = typeof payload.remaining === 'number' && Number.isFinite(payload.remaining)
+        ? Math.max(0, Math.floor(payload.remaining))
+        : Math.max(0, limit);
+
+      return {
+        limit,
+        remaining,
+      };
+    }
+
     function writeCachedTranslation(videoId, readingMode, articleHtml, meta) {
       if (!videoId || !articleHtml || !meta) {
-        return;
+        return false;
       }
 
       try {
@@ -3585,9 +3903,12 @@ function renderScript(): string {
             meta,
           }),
         );
-      } catch {}
+      } catch {
+        return false;
+      }
 
       renderCachedTranscriptList();
+      return true;
     }
 
     function renderCachedTranslation(cached) {
@@ -3658,18 +3979,18 @@ function renderScript(): string {
         .replace(/'/g, '&#39;');
     }
 
-    function formatHotViewCount(value) {
-      const count = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-      if (!count) {
-        return '刚加入热门';
+    function formatHotUpdatedDate(value) {
+      const timestamp = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+      if (!timestamp) {
+        return '';
       }
 
-      if (count >= 10000) {
-        const compact = (count / 10000).toFixed(count >= 100000 ? 0 : 1).replace(/\\.0$/, '');
-        return compact + ' 万浏览';
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) {
+        return '';
       }
 
-      return new Intl.NumberFormat('zh-CN').format(count) + ' 浏览';
+      return date.getMonth() + 1 + ' 月 ' + date.getDate() + ' 日';
     }
 
     function normalizeHotItem(item) {
@@ -3693,6 +4014,10 @@ function renderScript(): string {
         typeof item.viewCount === 'number' && Number.isFinite(item.viewCount)
           ? Math.max(0, Math.floor(item.viewCount))
           : 0;
+      const updatedAt =
+        typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)
+          ? Math.max(0, Math.floor(item.updatedAt))
+          : 0;
 
       return {
         videoId,
@@ -3701,6 +4026,7 @@ function renderScript(): string {
         thumbnailUrl,
         youtubeUrl,
         viewCount,
+        updatedAt,
       };
     }
 
@@ -3712,11 +4038,21 @@ function renderScript(): string {
         author: item.author,
         thumbnailUrl: item.thumbnailUrl,
         label: 'HOT',
-        metaText: formatHotViewCount(item.viewCount),
+        metaText: formatHotUpdatedDate(item.updatedAt),
       };
     }
 
-    async function loadHotItems() {
+    async function loadHotItems(options) {
+      const force = Boolean(options && options.force);
+      if (hotItemsLoading || (hotItemsLoadFailed && !force)) {
+        return;
+      }
+
+      hotItemsLoading = true;
+      if (force) {
+        hotItemsLoadFailed = false;
+      }
+
       try {
         const response = await fetch(HOT_ITEMS_ENDPOINT, {
           headers: {
@@ -3724,6 +4060,14 @@ function renderScript(): string {
           },
         });
         if (!response.ok) {
+          hotItemsLoadFailed = true;
+          const text = await response.text();
+          const errorPayload = parseApiErrorResponsePayload(response, text);
+          showApiErrorToast(
+            errorPayload,
+            '热门列表加载失败',
+            '暂时无法获取热门列表，请稍后再试。',
+          );
           return;
         }
 
@@ -3732,8 +4076,24 @@ function renderScript(): string {
           ? payload.items.map((item) => normalizeHotItem(item)).filter(Boolean)
           : [];
         hotItemsLoaded = true;
+        hotItemsLoadFailed = false;
+        if (payload && payload.warning) {
+          showApiErrorToast(
+            payload.warning,
+            '热门列表暂未更新',
+            '热门列表暂时无法更新，先为你展示默认内容。',
+          );
+        }
         renderCachedTranscriptList();
-      } catch {
+      } catch (err) {
+        hotItemsLoadFailed = true;
+        showApiErrorToast(
+          err,
+          '热门列表加载失败',
+          '暂时无法获取热门列表，请稍后再试。',
+        );
+      } finally {
+        hotItemsLoading = false;
       }
     }
 
@@ -3749,7 +4109,7 @@ function renderScript(): string {
       }
 
       try {
-        await fetch(VIDEO_VIEW_ENDPOINT, {
+        const response = await fetch(VIDEO_VIEW_ENDPOINT, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -3762,8 +4122,24 @@ function renderScript(): string {
           }),
           keepalive: true,
         });
-        void loadHotItems();
-      } catch {
+        if (!response.ok) {
+          const text = await response.text();
+          const errorPayload = parseApiErrorResponsePayload(response, text);
+          showApiErrorToast(
+            errorPayload,
+            '最近浏览保存失败',
+            '这次浏览记录暂时没有保存成功，不影响当前阅读。',
+          );
+          return;
+        }
+
+        void loadHotItems({ force: true });
+      } catch (err) {
+        showApiErrorToast(
+          err,
+          '最近浏览保存失败',
+          '这次浏览记录暂时没有保存成功，不影响当前阅读。',
+        );
       }
     }
 
@@ -3881,7 +4257,7 @@ function renderScript(): string {
       if (activeSavedTab === 'hot') {
         const hotCards = hotItems.map((item) => toHotSavedCard(item));
         renderSavedItems(hotCards, hotItems.length > 0);
-        if (!hotItemsLoaded) {
+        if (!hotItemsLoaded && !hotItemsLoadFailed) {
           void loadHotItems();
         }
         return;
@@ -3890,7 +4266,7 @@ function renderScript(): string {
       const entries = getCachedTranslationEntries(activeReadingMode);
       if (!entries.length) {
         renderRecentEmptyState();
-        if (!hotItemsLoaded) {
+        if (!hotItemsLoaded && !hotItemsLoadFailed) {
           void loadHotItems();
         }
         return;
@@ -4113,6 +4489,7 @@ function renderScript(): string {
       appBody.dataset.view = 'search';
       setTopbarView('search');
       setReadingProgressValue(0);
+      scrollViewportTo(0);
 
       if (options && options.animateReturn) {
         playSearchReturnAnimation();
@@ -4140,7 +4517,7 @@ function renderScript(): string {
       showToast(title, body);
     }
 
-    function normalizeGenerateErrorPayload(payload) {
+    function normalizeApiErrorPayload(payload) {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         return null;
       }
@@ -4152,7 +4529,7 @@ function renderScript(): string {
       };
     }
 
-    function getGenerateErrorToastTitle(code) {
+    function getApiErrorToastTitle(code, fallbackTitle) {
       if (code === 'missing_gemini_key') {
         return '未找到 Gemini key';
       }
@@ -4178,29 +4555,76 @@ function renderScript(): string {
       if (code === 'youtube_fetch_failed' || code === 'youtube_player_failed') {
         return '抓取 YouTube 信息失败';
       }
+      if (code === 'daily_gemini_translation_limit_exceeded') {
+        return '今日免费额度已用完';
+      }
+      if (code === 'invalid_json') {
+        return '请求格式有误';
+      }
+      if (code === 'hot_list_stale') {
+        return '热门列表暂未更新';
+      }
+      if (code === 'hot_view_record_failed') {
+        return '最近浏览保存失败';
+      }
+      if (code === 'empty_stream_response' || code === 'stream_ended_unexpectedly') {
+        return '连接已中断';
+      }
 
-      return '';
+      return fallbackTitle || '请求失败';
+    }
+
+    function resolveApiErrorMessage(payload, fallbackMessage) {
+      const error = normalizeApiErrorPayload(payload);
+      const message = error && typeof error.message === 'string' ? error.message.trim() : '';
+
+      if (
+        !message
+        || message === 'Failed to fetch'
+        || message === 'NetworkError when attempting to fetch resource.'
+      ) {
+        return fallbackMessage || '请求失败，请稍后再试。';
+      }
+
+      return message;
+    }
+
+    function showApiErrorToast(payload, fallbackTitle, fallbackMessage) {
+      const error = normalizeApiErrorPayload(payload);
+      showToast(
+        getApiErrorToastTitle(error && error.code, fallbackTitle),
+        resolveApiErrorMessage(error || payload, fallbackMessage),
+      );
+    }
+
+    function createApiRequestError(payload, fallbackMessage) {
+      const errorPayload = normalizeApiErrorPayload(payload);
+      const error = new Error(resolveApiErrorMessage(errorPayload || payload, fallbackMessage));
+
+      if (errorPayload && errorPayload.code) {
+        error.code = errorPayload.code;
+      }
+      if (errorPayload && errorPayload.status) {
+        error.status = errorPayload.status;
+      }
+
+      return error;
     }
 
     function handleGenerateError(payload) {
-      const error = normalizeGenerateErrorPayload(payload);
+      const error = normalizeApiErrorPayload(payload);
       if (!error || !error.code) {
         return false;
       }
 
-      const title = getGenerateErrorToastTitle(error.code);
-      if (!title) {
-        return false;
-      }
-
       returnToSearchWithToast(
-        title,
+        getApiErrorToastTitle(error.code, '生成失败'),
         error.message || '生成失败，请稍后重试。',
       );
       return true;
     }
 
-    function parseErrorResponsePayload(response, text) {
+    function parseApiErrorResponsePayload(response, text) {
       const trimmed = String(text || '').trim();
       if (!trimmed) {
         return null;
@@ -4208,7 +4632,7 @@ function renderScript(): string {
 
       try {
         const parsed = JSON.parse(trimmed);
-        return normalizeGenerateErrorPayload(parsed) || {
+        return normalizeApiErrorPayload(parsed) || {
           code: '',
           message: trimmed,
           status: response.status,
@@ -4225,6 +4649,7 @@ function renderScript(): string {
     function showArticleView() {
       appBody.dataset.view = 'article';
       setTopbarView('article');
+      scrollViewportTo(0);
       updateReadingProgress();
     }
 
@@ -4251,6 +4676,9 @@ function renderScript(): string {
     }
 
     async function startStream(endpoint, body, options) {
+      const requestBody = body ? { ...body } : {};
+      const usesCustomGeminiKey = endpoint === '/api/generate' && Boolean(customGeminiApiKey);
+
       setError('');
       resetArticle();
       showArticleView();
@@ -4266,6 +4694,7 @@ function renderScript(): string {
 
       const requestController = new AbortController();
       currentController = requestController;
+      activeRequestUsesCustomGeminiKey = usesCustomGeminiKey;
       setLoading(true);
 
       try {
@@ -4276,14 +4705,16 @@ function renderScript(): string {
           }
         }
 
-        const requestBody = body ? { ...body } : {};
         if (endpoint === '/api/generate') {
           if (customGeminiApiKey) {
             requestBody.geminiApiKey = customGeminiApiKey;
+          } else {
+            requestBody.localDayKey = buildLocalDayKey(Date.now());
           }
           const videoId = extractVideoId(requestBody.youtubeUrl || '');
           if (!skipLocalCache && tryRenderLocalTranslationCache(videoId, requestBody.readingMode)) {
             suppressCacheHitToast = false;
+            activeRequestUsesCustomGeminiKey = false;
             return;
           }
         }
@@ -4299,14 +4730,13 @@ function renderScript(): string {
 
         if (!response.ok) {
           const text = await response.text();
-          const errorPayload = parseErrorResponsePayload(response, text);
+          const errorPayload = parseApiErrorResponsePayload(response, text);
           if (endpoint === '/api/generate' && handleGenerateError(errorPayload)) {
             return;
           }
-          throw new Error(
-            (errorPayload && errorPayload.message)
-            || text
-            || '请求失败',
+          throw createApiRequestError(
+            errorPayload,
+            text || '请求失败，请稍后再试。',
           );
         }
 
@@ -4319,14 +4749,16 @@ function renderScript(): string {
         setArticleLoading(false);
         stopLoadingHintCycle();
         if (err?.name !== 'AbortError') {
-          setError(err instanceof Error ? err.message : '请求失败，请稍后再试。');
-          setStatus('生成中断', { busy: false, mode: 'idle' });
+          setError(resolveApiErrorMessage(err, '请求失败，请稍后再试。'));
+          setStatus('生成失败', { busy: false, mode: 'idle' });
+          showApiErrorToast(err, '生成失败', '生成失败，请稍后重试。');
         } else {
           setStatus('已停止', { busy: false, mode: 'idle' });
         }
       } finally {
         if (currentController === requestController) {
           currentController = null;
+          activeRequestUsesCustomGeminiKey = false;
           setLoading(false);
         }
         syncSubmitState();
@@ -4349,6 +4781,7 @@ function renderScript(): string {
       if (articleWrap) {
         articleWrap.scrollTop = 0;
       }
+      scrollViewportTo(0);
       hasArticleContent = false;
       setBusy(false, 'idle');
       syncSavedTabDefault(false);
@@ -4596,6 +5029,10 @@ function renderScript(): string {
         typeof payload.warning === 'string' && payload.warning.trim()
           ? payload.warning.trim()
           : '';
+      const incomingWarningCode =
+        typeof payload.warningCode === 'string' && payload.warningCode.trim()
+          ? payload.warningCode.trim()
+          : '';
       const hasStructuredInsights = Boolean(
         (typeof payload.titleTranslationZh === 'string' && payload.titleTranslationZh.trim())
         || (typeof payload.summaryZh === 'string' && payload.summaryZh.trim())
@@ -4603,10 +5040,20 @@ function renderScript(): string {
         || (Array.isArray(payload.speakers) && payload.speakers.length),
       );
 
-      if (incomingWarning && isGeminiHighDemandWarning(incomingWarning) && !hasStructuredInsights) {
-        stopLoadingHintCycle();
-        setArticleLoading(true, 'Gemini 当前繁忙', 'AI 暂时不可用，正在自动回退为原始字幕。');
-        showToast('Gemini 当前繁忙', 'AI 结果暂时不可用，已自动回退为原始字幕。');
+      if (incomingWarning) {
+        if (isGeminiHighDemandWarning(incomingWarning) && !hasStructuredInsights) {
+          stopLoadingHintCycle();
+          setArticleLoading(true, 'Gemini 当前繁忙', 'AI 暂时不可用，正在自动回退为原始字幕。');
+          showToast('Gemini 当前繁忙', 'AI 结果暂时不可用，已自动回退为原始字幕。');
+          return;
+        }
+
+        if (incomingWarningCode === 'sectioning_fallback') {
+          showToast('已回退到固定时间分段', incomingWarning);
+          return;
+        }
+
+        showToast('已自动降级处理', incomingWarning);
       }
     }
 
@@ -4686,6 +5133,13 @@ function renderScript(): string {
     }
 
     async function consumeSse(response) {
+      if (!response.body) {
+        throw createApiRequestError(
+          { code: 'empty_stream_response' },
+          '服务端没有返回可读取的数据，请稍后重试。',
+        );
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -4722,11 +5176,8 @@ function renderScript(): string {
                 showToast('已读取本地缓存', '这个视频的字幕已存在于 localhost，本次优先使用本地缓存。');
               }
               suppressCacheHitToast = false;
-            } else if (payload.stage === 'cloud_transcript_cache_hit') {
-              showToast('已读取云端字幕缓存', '这个视频的字幕已缓存在 Cloudflare，本次直接复用云端结果。');
-            } else if (payload.stage === 'cloud_article_cache_hit') {
-              showToast('已读取云端内容缓存', '这个视频的成品内容已缓存在 Cloudflare，本次直接回填结果。');
             }
+              
             if (payload.stage === 'transcript_ready') {
               setStatus('字幕已就绪，正在排版内容', { busy: true, mode: 'writing' });
             } else if (payload.stage === 'analyzing') {
@@ -4750,8 +5201,14 @@ function renderScript(): string {
           } else if (parsed.event === 'insights') {
             renderInsights(payload);
           } else if (parsed.event === 'warning') {
-            if (payload && payload.code === 'gemini_timeout' && payload.message) {
-              showToast('当前片段已跳过', payload.message);
+            if (payload && payload.message) {
+              if (payload.title) {
+                showToast(payload.title, payload.message);
+              } else if (payload.code === 'gemini_timeout') {
+                showToast('当前片段已跳过', payload.message);
+              } else {
+                showToast('已自动降级处理', payload.message);
+              }
             }
           } else if (parsed.event === 'error') {
             if (handleGenerateError(payload)) {
@@ -4760,8 +5217,10 @@ function renderScript(): string {
             setArticleLoading(false);
             setDialogueLoading(false);
             stopLoadingHintCycle();
-            setError(payload.message || '生成失败，请稍后重试。');
-            setBusy(false, 'idle');
+            setError(resolveApiErrorMessage(payload, '生成失败，请稍后重试。'));
+            setStatus('生成失败', { busy: false, mode: 'idle' });
+            showApiErrorToast(payload, '生成失败', '生成失败，请稍后重试。');
+            return;
           } else if (parsed.event === 'done') {
             setArticleLoading(false);
             setDialogueLoading(false);
@@ -4780,13 +5239,25 @@ function renderScript(): string {
                 article.innerHTML,
                 latestCompletionMeta,
               );
+              if (
+                !activeRequestUsesCustomGeminiKey
+                && shouldCountTowardsDailySuccessfulGeminiTranslationLimit(latestCompletionMeta)
+              ) {
+                await recordSuccessfulGeminiTranslationToday();
+              }
             }
             void recordVideoView(latestCompletionMeta);
+            return;
           }
 
           extracted = takeSseFrame(buffer);
         }
       }
+
+      throw createApiRequestError(
+        { code: 'stream_ended_unexpectedly' },
+        '连接已中断，请稍后重试。',
+      );
     }
 
     async function submitGenerate() {
@@ -4887,8 +5358,22 @@ function renderScript(): string {
     }
 
     if (loginButton) {
-      loginButton.addEventListener('click', () => {
-        showToast('登录功能即将上线', '后续这里会接入账号登录与同步能力。');
+      loginButton.addEventListener('click', async () => {
+        try {
+          const usage = await fetchDailySuccessfulGeminiTranslationUsage();
+          const usageCopy = usage.remaining > 0
+            ? '当前今天还剩 ' + usage.remaining + '/' + usage.limit + ' 次免费 Gemini 翻译。'
+            : '当前今天的免费 Gemini 翻译次数已用完（' + usage.limit + '/' + usage.limit + '）。';
+          showToast(
+            '登录功能即将上线',
+            usageCopy + ' 你也可以在设置里填入你自己的 Gemini key，继续翻译更多内容。后续登录后会接入账号同步，并提供更高的使用额度。',
+          );
+        } catch {
+          showToast(
+            '登录功能即将上线',
+            '当前默认每天最多可完成 ' + DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT + ' 次成功的 Gemini 翻译。你也可以在设置里填入你自己的 Gemini key，继续翻译更多内容。后续登录后会接入账号同步，并提供更高的使用额度。',
+          );
+        }
       });
     }
 
@@ -5000,6 +5485,7 @@ function renderScript(): string {
       articleWrap.addEventListener('scroll', updateReadingProgress, { passive: true });
     }
 
+    window.addEventListener('scroll', updateReadingProgress, { passive: true });
     window.addEventListener('resize', updateReadingProgress);
 
     clearLegacyTranscriptCaches();
@@ -5015,18 +5501,39 @@ function renderScript(): string {
   `;
 }
 
-export function renderAppPage(): string {
+export function renderAppPage(options: { canonicalUrl: string; iconUrl: string }): string {
+  const canonicalUrl = escapeHtmlAttribute(options.canonicalUrl);
+  const iconUrl = escapeHtmlAttribute(options.iconUrl);
+  const structuredData = buildStructuredData(options.canonicalUrl, options.iconUrl);
+
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>YouTube Video Reader</title>
-    <link rel="icon" href="${BRAND_ICON_DATA_URI}" />
-    <meta
-      name="description"
-      content="输入一个带字幕的 YouTube 链接，抓取并阅读视频的原始字幕。"
-    />
+    <title>${SITE_TITLE}</title>
+    <meta name="description" content="${SITE_DESCRIPTION}" />
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <meta name="application-name" content="${SITE_NAME}" />
+    <meta name="apple-mobile-web-app-title" content="${SITE_NAME}" />
+    <meta name="theme-color" content="${SITE_THEME_COLOR}" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="canonical" href="${canonicalUrl}" />
+    <link rel="icon" type="image/png" href="${iconUrl}" />
+    <link rel="apple-touch-icon" href="${iconUrl}" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="${SITE_NAME}" />
+    <meta property="og:title" content="${SITE_TITLE}" />
+    <meta property="og:description" content="${SITE_DESCRIPTION}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta property="og:image" content="${iconUrl}" />
+    <meta property="og:image:alt" content="${SITE_NAME} 应用图标" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="${SITE_TITLE}" />
+    <meta name="twitter:description" content="${SITE_DESCRIPTION}" />
+    <meta name="twitter:image" content="${iconUrl}" />
+    <script type="application/ld+json">${structuredData}</script>
     <style>${renderStyles()}</style>
   </head>
   <body>
@@ -5166,7 +5673,7 @@ export function renderAppPage(): string {
                           type="url"
                           required
                           value="${SAMPLE_URL}"
-                          placeholder="在这里粘贴 YouTube 视频链接，抓取原始字幕。"
+                          placeholder="在这里粘贴 YouTube 视频链接，开启全新观看体验。"
                         />
                         <div class="input-mirror" data-input-mirror>${SAMPLE_URL}</div>
                       </div>
@@ -5179,7 +5686,7 @@ export function renderAppPage(): string {
                       </div>
                       ${renderReadingModeToggle()}
                       <div class="generate-row" data-search-animate style="--search-delay: 360ms;">
-                        <button type="submit" data-submit>开始阅读字幕</button>
+                        <button type="submit" data-submit>开始阅读</button>
                       </div>
                     </div>
                   </form>

@@ -17,6 +17,7 @@ export function createSseResponse(): {
         'cache-control': 'no-cache, no-transform',
         connection: 'keep-alive',
         'x-accel-buffering': 'no',
+        'x-robots-tag': 'noindex, nofollow',
       },
     }),
     writer: writable.getWriter(),

@@ -1,5 +1,5 @@
 import type { Env } from '../index';
-import { AppError } from '../services/errors';
+import { AppError, jsonErrorResponse } from '../services/errors';
 import { listHotVideos, recordHotVideoView } from '../services/storage';
 
 interface ViewRequestBody {
@@ -15,6 +15,7 @@ function jsonResponse(payload: unknown, status = 200): Response {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
+      'x-robots-tag': 'noindex, nofollow',
     },
   });
 }
@@ -28,26 +29,35 @@ async function parseRequestBody(request: Request): Promise<ViewRequestBody> {
 }
 
 export async function handleHotRoute(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const rawLimit = Number.parseInt(url.searchParams.get('limit') ?? '', 10);
-  const items = await listHotVideos(env, rawLimit);
-  return jsonResponse({ items });
+  try {
+    const url = new URL(request.url);
+    const rawLimit = Number.parseInt(url.searchParams.get('limit') ?? '', 10);
+    const { items, warning } = await listHotVideos(env, rawLimit);
+    return jsonResponse(warning ? { items, warning } : { items });
+  } catch (error) {
+    return jsonErrorResponse(error);
+  }
 }
 
 export async function handleViewRoute(request: Request, env: Env): Promise<Response> {
-  const body = await parseRequestBody(request);
+  try {
+    const body = await parseRequestBody(request);
 
-  await recordHotVideoView(env, {
-    videoId: body.videoId ?? '',
-    sourceTitle: body.sourceTitle ?? '',
-    sourceAuthor: body.sourceAuthor ?? '',
-    thumbnailUrl: body.thumbnailUrl ?? '',
-  });
+    await recordHotVideoView(env, {
+      videoId: body.videoId ?? '',
+      sourceTitle: body.sourceTitle ?? '',
+      sourceAuthor: body.sourceAuthor ?? '',
+      thumbnailUrl: body.thumbnailUrl ?? '',
+    });
 
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'cache-control': 'no-store',
-    },
-  });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'cache-control': 'no-store',
+        'x-robots-tag': 'noindex, nofollow',
+      },
+    });
+  } catch (error) {
+    return jsonErrorResponse(error);
+  }
 }

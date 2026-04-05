@@ -349,15 +349,6 @@ function containsSingleQuestionPrompt(value: string): boolean {
   return !questionMarks || questionMarks.length <= 1;
 }
 
-function hasDistinctAnswerSpeakers(answers: TranscriptDialogueTurn[]): boolean {
-  if (answers.length <= 1) {
-    return true;
-  }
-
-  const normalizedSpeakers = answers.map((answer) => answer.speaker.trim().toLowerCase()).filter(Boolean);
-  return normalizedSpeakers.length === answers.length && new Set(normalizedSpeakers).size === answers.length;
-}
-
 function normalizeChineseTitle(value: string): string {
   return normalizeWhitespace(value)
     .replace(/^["'“”‘’《》〈〉「」『』]+/, '')
@@ -1130,7 +1121,6 @@ function normalizeRelaxedDialogueGroups(payload: unknown): TranscriptDialogueGro
         && question.textZh
         && normalizedAnswers.length > 0
         && containsSingleQuestionPrompt(question.textZh)
-        && hasDistinctAnswerSpeakers(normalizedAnswers)
       );
       const group: TranscriptDialogueGroup = {
         topicTitleZh: normalizeRelaxedDialogueTopicTitle(item, index),
@@ -1239,10 +1229,6 @@ function normalizeDialogueTurns(payload: unknown, model: string, section: Transc
 
   if (!groups.every((group) => containsSingleQuestionPrompt(group.question?.textZh ?? ''))) {
     throw new AppError('gemini_invalid_dialogue_groups', 'Gemini 返回的 topic 没有严格遵循单个问题格式。', 502);
-  }
-
-  if (!groups.every((group) => hasDistinctAnswerSpeakers(group.answers))) {
-    throw new AppError('gemini_invalid_dialogue_groups', 'Gemini 返回的 topic 在多回答场景下没有使用不同说话人。', 502);
   }
 
   if (!turns.length) {

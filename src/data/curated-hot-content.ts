@@ -6,6 +6,14 @@ import {
   type StoredTranslationContent,
 } from '../services/render-content';
 import type { TranscriptBundle } from '../services/youtube';
+import {
+  blockCuratedHotItem,
+  blockCuratedTranslationContent,
+} from './curated-hot-block';
+import {
+  jensenCuratedHotItem,
+  jensenCuratedTranslationContent,
+} from './curated-hot-jensen';
 
 export interface CuratedHotVideoItem {
   videoId: string;
@@ -281,6 +289,14 @@ const curatedEntries: Array<{
   item: CuratedHotVideoItem;
   content: StoredTranslationContent;
 }> = [
+  {
+    item: blockCuratedHotItem,
+    content: blockCuratedTranslationContent,
+  },
+  {
+    item: jensenCuratedHotItem,
+    content: jensenCuratedTranslationContent,
+  },
   {
     item: {
       videoId: CURATED_VIDEO_ID,

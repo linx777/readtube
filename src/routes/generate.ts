@@ -1,13 +1,14 @@
 import { isAbortError, throwIfAborted } from '../services/abort';
 import type { Env } from '../index';
 import { getCuratedHotTranslationContent } from '../data/curated-hot-content';
-import { AppError, formatErrorMessage } from '../services/errors';
+import { AppError, formatErrorMessage, jsonErrorResponse } from '../services/errors';
 import {
   generateTranscriptSections,
   type QuickTranscriptSectionSummaryResult,
   type TranscriptDialogueSliceResult,
   type TranscriptSectionBoundary,
   type TranscriptSection,
+  type TranscriptSectionsResult,
   translateTranscriptSectionToZh,
 } from '../services/gemini';
 import { renderMarkdownDocument } from '../services/markdown';
@@ -43,6 +44,7 @@ interface GenerateRequestBody {
   cachedTranscript?: TranscriptBundle;
   readingMode?: 'quick' | 'full';
   geminiApiKey?: string;
+  localDayKey?: string;
 }
 
 type ReadingMode = 'quick' | 'full';
@@ -57,6 +59,9 @@ const FIRST_CALL_TRANSCRIPT_LIMIT_SECONDS = 30 * 60;
 const MANUAL_SECTION_WINDOW_SECONDS = 20 * 60;
 const QUICK_SECTIONING_SLICE_SECONDS = 18 * 60;
 const MANUAL_SECTION_MODEL = 'manual_time_slice';
+const DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT = 3;
+const DAILY_SUCCESSFUL_GEMINI_TRANSLATION_COOKIE = 'xvc_gemini_success';
+const SECTION_BOUNDARY_MAX_RETRIES = 1;
 const MANUAL_SECTION_SUBTITLE_PATTERN = /^Transcript Section (\d+)$/i;
 const MANUAL_SECTION_SUMMARY_PATTERN = /^Transcript content from (.+) to (.+)\.$/i;
 const FULL_DIALOGUE_LOADING_HINTS = [
@@ -115,6 +120,22 @@ type LoadingHintCopy = {
   body: string;
 };
 
+const RETRYABLE_SECTION_BOUNDARY_ERROR_CODES = new Set([
+  'missing_section_timestamp',
+  'invalid_section_timestamp',
+]);
+const SECTION_TIMESTAMP_MATCH_TOLERANCE_SECONDS = 10;
+
+class SectionBoundaryResolutionError extends AppError {
+  constructor(
+    error: AppError,
+    readonly latestResult: TranscriptSectionsResult,
+  ) {
+    super(error.code, error.publicMessage, error.status, { cause: error });
+    this.name = 'SectionBoundaryResolutionError';
+  }
+}
+
 function getUsableCachedTranscript(body: GenerateRequestBody, youtubeUrl: string): TranscriptBundle | null {
   if (!isTranscriptBundle(body.cachedTranscript)) {
     return null;
@@ -157,6 +178,126 @@ function normalizeReadingMode(value: unknown): ReadingMode {
 
 function hasCustomGeminiKey(body: GenerateRequestBody): boolean {
   return typeof body.geminiApiKey === 'string' && Boolean(body.geminiApiKey.trim());
+}
+
+function isValidLocalDayKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+function getUtcDayKey(now = new Date()): string {
+  return [
+    now.getUTCFullYear(),
+    String(now.getUTCMonth() + 1).padStart(2, '0'),
+    String(now.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getRequestedLocalDayKey(body: GenerateRequestBody): string {
+  return isValidLocalDayKey(body.localDayKey)
+    ? body.localDayKey.trim()
+    : getUtcDayKey();
+}
+
+function readCookieValue(request: Request, name: string): string {
+  const rawCookie = request.headers.get('cookie') || '';
+  const parts = rawCookie.split(/;\s*/);
+
+  for (const part of parts) {
+    const separatorIndex = part.indexOf('=');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = part.slice(0, separatorIndex).trim();
+    if (key !== name) {
+      continue;
+    }
+
+    return part.slice(separatorIndex + 1).trim();
+  }
+
+  return '';
+}
+
+function getDailySuccessfulGeminiTranslationCount(
+  request: Request,
+  localDayKey: string,
+): number {
+  const rawValue = readCookieValue(request, DAILY_SUCCESSFUL_GEMINI_TRANSLATION_COOKIE);
+  const match = rawValue.match(/^(\d{4}-\d{2}-\d{2})\.(\d+)$/);
+  if (!match || match[1] !== localDayKey) {
+    return 0;
+  }
+
+  const parsedCount = Number.parseInt(match[2], 10);
+  return Number.isFinite(parsedCount) ? Math.max(0, parsedCount) : 0;
+}
+
+function buildDailySuccessfulGeminiTranslationCookie(localDayKey: string, successCount: number): string {
+  const normalizedCount = Math.max(0, Math.floor(successCount));
+  return [
+    `${DAILY_SUCCESSFUL_GEMINI_TRANSLATION_COOKIE}=${localDayKey}.${normalizedCount}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Secure',
+    'Max-Age=172800',
+  ].join('; ');
+}
+
+interface GeminiUsageBody {
+  localDayKey?: string;
+}
+
+async function parseGeminiUsageBody(request: Request): Promise<GeminiUsageBody> {
+  try {
+    return (await request.json()) as GeminiUsageBody;
+  } catch {
+    return {};
+  }
+}
+
+function createGeminiUsageStatusResponse(localDayKey: string, successCount: number): Response {
+  const used = Math.max(0, successCount);
+  const remaining = Math.max(0, DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT - used);
+
+  return new Response(JSON.stringify({
+    localDayKey,
+    limit: DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT,
+    used,
+    remaining,
+  }), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+export async function handleGeminiTranslationUsageRoute(request: Request): Promise<Response> {
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    const localDayKey = isValidLocalDayKey(url.searchParams.get('localDayKey'))
+      ? String(url.searchParams.get('localDayKey')).trim()
+      : getUtcDayKey();
+    const currentCount = getDailySuccessfulGeminiTranslationCount(request, localDayKey);
+    return createGeminiUsageStatusResponse(localDayKey, currentCount);
+  }
+
+  const body = await parseGeminiUsageBody(request);
+  const localDayKey = isValidLocalDayKey(body.localDayKey)
+    ? body.localDayKey.trim()
+    : getUtcDayKey();
+  const currentCount = getDailySuccessfulGeminiTranslationCount(request, localDayKey);
+  const nextCount = currentCount + 1;
+
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'cache-control': 'no-store',
+      'set-cookie': buildDailySuccessfulGeminiTranslationCookie(localDayKey, nextCount),
+    },
+  });
 }
 
 function shouldUseSharedArticleCache(body: GenerateRequestBody): boolean {
@@ -401,14 +542,47 @@ function findChunkIndexForTimestamp(
   timestampSeconds: number,
   fromIndex: number,
 ): number {
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
   for (let index = Math.max(0, fromIndex); index < chunks.length; index += 1) {
     const chunkTimestampSeconds = Math.floor(chunks[index].start);
+    const distance = Math.abs(chunkTimestampSeconds - timestampSeconds);
     if (chunkTimestampSeconds === timestampSeconds) {
       return index;
     }
+
+    if (
+      distance <= SECTION_TIMESTAMP_MATCH_TOLERANCE_SECONDS
+      && distance < bestDistance
+    ) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+
+    if (chunkTimestampSeconds > timestampSeconds + SECTION_TIMESTAMP_MATCH_TOLERANCE_SECONDS) {
+      break;
+    }
   }
 
-  return -1;
+  if (bestIndex >= 0) {
+    return bestIndex;
+  }
+
+  for (let index = Math.max(0, fromIndex); index < chunks.length; index += 1) {
+    const chunkTimestampSeconds = Math.floor(chunks[index].start);
+    const distance = Math.abs(chunkTimestampSeconds - timestampSeconds);
+
+    if (
+      distance < bestDistance
+      || (distance === bestDistance && (bestIndex < 0 || index < bestIndex))
+    ) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  }
+
+  return bestIndex;
 }
 
 function findLastChunkIndexForTimestamp(
@@ -417,15 +591,44 @@ function findLastChunkIndexForTimestamp(
   fromIndex: number,
 ): number {
   let matchedIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
 
   for (let index = Math.max(0, fromIndex); index < chunks.length; index += 1) {
     const chunkTimestampSeconds = Math.floor(chunks[index].start);
-    if (chunkTimestampSeconds > timestampSeconds) {
+    if (chunkTimestampSeconds > timestampSeconds + SECTION_TIMESTAMP_MATCH_TOLERANCE_SECONDS) {
       break;
     }
 
+    const distance = Math.abs(chunkTimestampSeconds - timestampSeconds);
     if (chunkTimestampSeconds === timestampSeconds) {
       matchedIndex = index;
+      bestDistance = 0;
+      continue;
+    }
+
+    if (
+      distance <= SECTION_TIMESTAMP_MATCH_TOLERANCE_SECONDS
+      && (distance < bestDistance || (distance === bestDistance && index > matchedIndex))
+    ) {
+      matchedIndex = index;
+      bestDistance = distance;
+    }
+  }
+
+  if (matchedIndex >= 0) {
+    return matchedIndex;
+  }
+
+  for (let index = Math.max(0, fromIndex); index < chunks.length; index += 1) {
+    const chunkTimestampSeconds = Math.floor(chunks[index].start);
+    const distance = Math.abs(chunkTimestampSeconds - timestampSeconds);
+
+    if (
+      distance < bestDistance
+      || (distance === bestDistance && index > matchedIndex)
+    ) {
+      matchedIndex = index;
+      bestDistance = distance;
     }
   }
 
@@ -463,13 +666,21 @@ export function buildTranscriptSectionsFromTimestampBoundaries(
         throw new AppError('invalid_section_timestamp', `Gemini 返回了无法识别的下一段起始时间：${nextBoundary.startLabel}`, 502);
       }
 
-      const nextStartIndex = findChunkIndexForTimestamp(bundle.chunks, nextStartSeconds, startIndex + 1);
+      let nextStartIndex = findChunkIndexForTimestamp(bundle.chunks, nextStartSeconds, startIndex + 1);
       if (nextStartIndex < 0) {
         throw new AppError('missing_section_timestamp', `无法在原始字幕中定位下一段起始时间：${nextBoundary.startLabel}`, 502);
       }
+      if (nextStartIndex <= startIndex) {
+        nextStartIndex = startIndex + 1;
+      }
 
-      endIndex = nextStartIndex - 1;
-      nextSearchIndex = nextStartIndex;
+      if (nextStartIndex >= bundle.chunks.length) {
+        endIndex = bundle.chunks.length - 1;
+        nextSearchIndex = bundle.chunks.length;
+      } else {
+        endIndex = nextStartIndex - 1;
+        nextSearchIndex = nextStartIndex;
+      }
     } else {
       const endSeconds = parseTimestampLabelToSeconds(boundary.endLabel);
       if (endSeconds === null) {
@@ -500,6 +711,62 @@ export function buildTranscriptSectionsFromTimestampBoundaries(
   }
 
   return sections;
+}
+
+async function generateTranscriptSectionsWithBoundaryRetry(
+  bundle: TranscriptBundle,
+  env: {
+    GEMINI_API_KEY?: string;
+    GEMINI_MODEL?: string;
+    GEMINI_INSIGHTS_MODEL?: string;
+    GEMINI_DIALOGUE_MODEL?: string;
+  },
+  readingMode: 'quick' | 'full',
+  signal?: AbortSignal,
+  options?: {
+    onRetry?: (context: {
+      attempt: number;
+      maxRetries: number;
+      error: AppError;
+      latestResult: TranscriptSectionsResult;
+    }) => Promise<void> | void;
+  },
+): Promise<{
+  result: TranscriptSectionsResult;
+  sections: TranscriptSection[];
+}> {
+  for (let attempt = 0; attempt <= SECTION_BOUNDARY_MAX_RETRIES; attempt += 1) {
+    throwIfAborted(signal);
+    const result = await generateTranscriptSections(bundle, env, readingMode, signal);
+
+    try {
+      return {
+        result,
+        sections: buildTranscriptSectionsFromTimestampBoundaries(bundle, result.sections),
+      };
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
+      const appError = AppError.from(error);
+      if (
+        !RETRYABLE_SECTION_BOUNDARY_ERROR_CODES.has(appError.code)
+        || attempt >= SECTION_BOUNDARY_MAX_RETRIES
+      ) {
+        throw new SectionBoundaryResolutionError(appError, result);
+      }
+
+      await options?.onRetry?.({
+        attempt: attempt + 1,
+        maxRetries: SECTION_BOUNDARY_MAX_RETRIES,
+        error: appError,
+        latestResult: result,
+      });
+    }
+  }
+
+  throw new AppError('unexpected_error', 'Gemini 分段失败，请稍后重试。', 502);
 }
 
 function extractTranscriptLineText(line: string): string {
@@ -749,6 +1016,16 @@ function attachSectionPreviewCopy(
   });
 }
 
+function buildManualFallbackSections(
+  bundle: TranscriptBundle,
+  previewSections: Array<Pick<TranscriptSection, 'startLabel' | 'endLabel' | 'subtitle' | 'summary'>> = [],
+): TranscriptSection[] {
+  return attachSectionPreviewCopy(
+    buildManualTranscriptSections(bundle),
+    previewSections,
+  );
+}
+
 function renderTranscriptIntro(
   bundle: TranscriptBundle,
   readingMode: ReadingMode,
@@ -909,15 +1186,17 @@ function renderDialogueSliceMarkdown(
       })
       .filter((group) => group.topicTitleZh && group.turns.length)
     : [];
-  const speakerDisplayNames = showSpeakerNames
-    ? buildSpeakerDisplayNames(mergedGroups.length ? mergedGroups.flatMap((group) => group.turns) : mergedTurns)
+  const displayTurns = mergedGroups.length ? mergedGroups.flatMap((group) => group.turns) : mergedTurns;
+  const shouldShowSpeakerNames = showSpeakerNames || displayTurns.some((turn) => !turn.speaker.trim());
+  const speakerDisplayNames = shouldShowSpeakerNames
+    ? buildSpeakerDisplayNames(displayTurns)
     : new Map<string, string>();
 
   return [
     renderSectionThemeHtml(section),
     (mergedGroups.length
-      ? mergedGroups.map((group) => renderDialogueSubtopicHtml(group, speakerDisplayNames, showSpeakerNames)).join('')
-      : renderDialogueTurnsHtml(mergedTurns, speakerDisplayNames, showSpeakerNames)),
+      ? mergedGroups.map((group) => renderDialogueSubtopicHtml(group, speakerDisplayNames, shouldShowSpeakerNames)).join('')
+      : renderDialogueTurnsHtml(mergedTurns, speakerDisplayNames, shouldShowSpeakerNames)),
   ].join('');
 }
 
@@ -985,7 +1264,7 @@ function renderDialogueQaTurnHtml(
   showSpeakerNames: boolean,
 ): string {
   const speaker = turn.speaker.trim();
-  const roleLabel = showSpeakerNames && speaker
+  const roleLabel = showSpeakerNames
     ? (speakerDisplayNames.get(speaker) || getSpeakerDisplayName(speaker))
     : '';
   const speakerHtml = roleLabel
@@ -1041,7 +1320,7 @@ function renderDialogueTurnsHtml(
     }
 
     const speaker = turn.speaker.trim();
-    if (!showSpeakerNames || !speaker) {
+    if (!showSpeakerNames) {
       lines.push(`[${turn.timestamp}] ${turn.textZh}`);
       continue;
     }
@@ -1063,11 +1342,16 @@ function getSpeakerFirstToken(speaker: string): string {
 }
 
 function getSpeakerDisplayName(speaker: string): string {
-  if (/^unknown$/i.test(speaker.trim())) {
+  const normalized = speaker.trim();
+  if (!normalized) {
+    return 'host';
+  }
+
+  if (/^unknown$/i.test(normalized)) {
     return 'Host';
   }
 
-  return getSpeakerFirstToken(speaker);
+  return getSpeakerFirstToken(normalized);
 }
 
 function buildSpeakerDisplayNames(
@@ -1231,6 +1515,11 @@ function normalizeDialogueGroups(
       normalized[index].turns,
     );
 
+    if (wouldOrphanStructuredGroupQuestion(normalized[index], mergedBoundary.movedTurn)) {
+      index += 1;
+      continue;
+    }
+
     normalized[index - 1] = reconcileDialogueGroup(normalized[index - 1], mergedBoundary.previousTurns);
     normalized[index] = reconcileDialogueGroup(normalized[index], mergedBoundary.nextTurns);
 
@@ -1301,16 +1590,18 @@ function removeMovedTurnFromFirstGroup(
     .filter((group) => group.turns.length);
 }
 
+function wouldOrphanStructuredGroupQuestion(
+  group: TranscriptDialogueSliceResult['groups'][number] | undefined,
+  movedTurn: { timestamp: string; speaker: string; textZh: string } | null,
+): boolean {
+  return Boolean(group?.question && movedTurn && isSameDialogueTurn(group.question, movedTurn));
+}
+
 function wouldOrphanStructuredQuestion(
   next: TranscriptDialogueSliceResult,
   movedTurn: { timestamp: string; speaker: string; textZh: string } | null,
 ): boolean {
-  if (!movedTurn) {
-    return false;
-  }
-
-  const firstGroup = next.groups.at(0);
-  return Boolean(firstGroup?.question && isSameDialogueTurn(firstGroup.question, movedTurn));
+  return wouldOrphanStructuredGroupQuestion(next.groups.at(0), movedTurn);
 }
 
 function normalizeDialogueSliceTurns(
@@ -1604,6 +1895,7 @@ export async function handleGenerateRoute(
     const body = await parseRequestBody(request);
     const youtubeUrl = body.youtubeUrl?.trim();
     const readingMode = normalizeReadingMode(body.readingMode);
+    const requestedLocalDayKey = getRequestedLocalDayKey(body);
     const effectiveEnv = getEffectiveGeminiEnv(env, body);
     const transcriptProviderOptions = getTranscriptProviderOptions(env);
     if (!youtubeUrl) {
@@ -1706,6 +1998,7 @@ export async function handleGenerateRoute(
                   ...cachedArticle.meta,
                   stage: 'complete',
                   statusText: '内容已完成',
+                  consumesDailyGeminiTranslationLimit: false,
                 });
                 await sendSseEvent(writer, 'done', { ok: true });
                 return;
@@ -1769,6 +2062,7 @@ export async function handleGenerateRoute(
                 ...curatedMeta,
                 stage: 'complete',
                 statusText: '内容已完成',
+                consumesDailyGeminiTranslationLimit: false,
               };
 
               if (sharedArticleCacheEnabled) {
@@ -1790,6 +2084,17 @@ export async function handleGenerateRoute(
               await sendSseEvent(writer, 'done', { ok: true });
               return;
             }
+          }
+
+          if (
+            !hasCustomGeminiKey(body)
+            && getDailySuccessfulGeminiTranslationCount(request, requestedLocalDayKey) >= DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT
+          ) {
+            throw new AppError(
+              'daily_gemini_translation_limit_exceeded',
+              `今天最多可完成 ${DAILY_SUCCESSFUL_GEMINI_TRANSLATION_LIMIT} 次成功的 Gemini 翻译。你可以在设置里填入你自己的 Gemini key 后继续使用。`,
+              429,
+            );
           }
 
           assertGeminiKeyConfigured(effectiveEnv, readingMode);
@@ -1963,17 +2268,35 @@ export async function handleGenerateRoute(
                 ...buildBundleMeta(transcriptBundle, readingMode),
               });
 
-              const sectionsResult = await generateTranscriptSections(
+              const sectionGeneration = await generateTranscriptSectionsWithBoundaryRetry(
                 transcriptBundle,
                 effectiveEnv,
                 readingMode,
                 request.signal,
+                {
+                  onRetry: async ({ attempt, maxRetries, error }) => {
+                    logGenerate('section_boundary_retry', {
+                      videoId: transcriptBundle.videoId,
+                      readingMode,
+                      attempt,
+                      maxRetries,
+                      code: error.code,
+                      message: error.publicMessage,
+                    });
+                    await sendSseEvent(writer, 'meta', {
+                      stage: 'analyzing',
+                      statusText: `分段时间戳对齐失败，正在自动重试（${attempt}/${maxRetries}）`,
+                      ...buildBundleMeta(transcriptBundle, readingMode),
+                    });
+                  },
+                },
               );
+              const sectionsResult = sectionGeneration.result;
               translatedTitleZh = sectionsResult.titleTranslationZh?.trim() || translatedTitleZh;
               summaryZh = sectionsResult.summaryZh?.trim() || summaryZh;
               const sections = renumberManualPlaceholderSections(
                 mergeQuestionAnswerSplitSections(
-                  buildTranscriptSectionsFromTimestampBoundaries(transcriptBundle, sectionsResult.sections),
+                  sectionGeneration.sections,
                 ),
               );
 
@@ -2012,26 +2335,38 @@ export async function handleGenerateRoute(
               }
 
               const appError = AppError.from(error);
+              const latestSectioningResult = error instanceof SectionBoundaryResolutionError
+                ? error.latestResult
+                : null;
               translationNeedsRefresh = true;
+              translatedTitleZh = latestSectioningResult?.titleTranslationZh?.trim() || translatedTitleZh;
+              summaryZh = latestSectioningResult?.summaryZh?.trim() || summaryZh;
               logGenerate('quick_flow_failed', {
                 videoId: transcriptBundle.videoId,
                 code: appError.code,
                 message: appError.publicMessage,
               });
+              await sendSseEvent(writer, 'warning', {
+                code: appError.code,
+                title: '已回退到固定时间分段',
+                message: `AI 分段失败，已自动回退到固定 20 分钟分段。${appError.publicMessage ? ` ${appError.publicMessage}` : ''}`.trim(),
+              });
 
               await sendSseEvent(writer, 'meta', {
                 stage: 'writing',
-                statusText: 'AI 分段失败，回退到原始速读内容',
+                statusText: 'AI 分段失败，回退到固定时间分段',
                 ...buildBundleMeta(transcriptBundle, readingMode),
+                translatedTitleZh,
+                summaryZh,
               });
 
-              for (const html of renderTranscriptIntro(transcriptBundle, readingMode)) {
-                await emitHtml('article', html);
-              }
-
-              for (const chunk of buildQuickReadChunks(transcriptBundle.chunks)) {
+              const fallbackSections = buildManualFallbackSections(
+                transcriptBundle,
+                latestSectioningResult?.sections ?? [],
+              );
+              for (const chunk of fallbackSections) {
                 throwIfAborted(request.signal);
-                await emitHtml('article', renderQuickReadChunk(chunk));
+                await emitHtml('dialogue', renderQuickSectionFallbackHtml(chunk));
               }
             }
           } else if (readingMode === 'full') {
@@ -2049,48 +2384,98 @@ export async function handleGenerateRoute(
                 firstCallSliced: false,
               });
 
-              const overviewResult = await generateTranscriptSections(
-                transcriptBundle,
-                effectiveEnv,
-                'quick',
-                request.signal,
-              );
-              const insights = {
-                titleTranslationZh: overviewResult.titleTranslationZh?.trim() || '',
-                summaryZh: overviewResult.summaryZh?.trim() || '',
-                summary: overviewResult.summary?.trim() || '',
-                speakers: overviewResult.speakers ?? [],
-                model: overviewResult.model,
+              let overviewResult: TranscriptSectionsResult;
+              let sectioningWarning = '';
+              const insights: {
+                titleTranslationZh: string;
+                summaryZh: string;
+                summary: string;
+                speakers: string[];
+                model: string;
+              } = {
+                titleTranslationZh: '',
+                summaryZh: '',
+                summary: '',
+                speakers: [],
+                model: '',
               };
 
               let sectionsResult: { sections: TranscriptSection[]; model: string };
               try {
+                const overviewGeneration = await generateTranscriptSectionsWithBoundaryRetry(
+                  transcriptBundle,
+                  effectiveEnv,
+                  'quick',
+                  request.signal,
+                  {
+                    onRetry: async ({ attempt, maxRetries, error }) => {
+                      logGenerate('section_boundary_retry', {
+                        videoId: transcriptBundle.videoId,
+                        readingMode,
+                        attempt,
+                        maxRetries,
+                        code: error.code,
+                        message: error.publicMessage,
+                      });
+                      await sendSseEvent(writer, 'meta', {
+                        stage: 'analyzing',
+                        statusText: `分段时间戳对齐失败，正在自动重试（${attempt}/${maxRetries}）`,
+                        ...buildBundleMeta(transcriptBundle, readingMode),
+                      });
+                    },
+                  },
+                );
+                overviewResult = overviewGeneration.result;
                 sectionsResult = {
-                  sections: mergeQuestionAnswerSplitSections(
-                    buildTranscriptSectionsFromTimestampBoundaries(transcriptBundle, overviewResult.sections),
-                  ),
+                  sections: mergeQuestionAnswerSplitSections(overviewGeneration.sections),
                   model: overviewResult.model,
                 };
               } catch (error) {
                 if (isAbortError(error)) {
                   throw error;
                 }
+                if (!(error instanceof SectionBoundaryResolutionError)) {
+                  const sectionError = AppError.from(error);
+                  logGenerate('full_sections_failed', {
+                    videoId: transcriptBundle.videoId,
+                    code: sectionError.code,
+                    message: sectionError.publicMessage,
+                  });
+                  sectioningWarning = sectionError.publicMessage;
+                  translationNeedsRefresh = true;
+                  overviewResult = {
+                    sections: [],
+                    model: '',
+                  };
+                  sectionsResult = {
+                    sections: buildManualFallbackSections(transcriptBundle),
+                    model: MANUAL_SECTION_MODEL,
+                  };
+                } else {
+                  overviewResult = error.latestResult;
+                  const sectionError = AppError.from(error);
+                  logGenerate('full_sections_failed', {
+                    videoId: transcriptBundle.videoId,
+                    code: sectionError.code,
+                    message: sectionError.publicMessage,
+                  });
+                  sectioningWarning = sectionError.publicMessage;
+                  translationNeedsRefresh = true;
 
-                const sectionError = AppError.from(error);
-                logGenerate('full_sections_failed', {
-                  videoId: transcriptBundle.videoId,
-                  code: sectionError.code,
-                  message: sectionError.publicMessage,
-                });
-
-                sectionsResult = {
-                  sections: attachSectionPreviewCopy(
-                    buildManualTranscriptSections(transcriptBundle),
-                    overviewResult.sections,
-                  ),
-                  model: MANUAL_SECTION_MODEL,
-                };
+                  sectionsResult = {
+                    sections: buildManualFallbackSections(
+                      transcriptBundle,
+                      overviewResult.sections,
+                    ),
+                    model: MANUAL_SECTION_MODEL,
+                  };
+                }
               }
+              insights.titleTranslationZh = overviewResult.titleTranslationZh?.trim() || '';
+              insights.summaryZh = overviewResult.summaryZh?.trim() || '';
+              insights.summary = overviewResult.summary?.trim() || '';
+              insights.speakers = overviewResult.speakers ?? [];
+              insights.model = overviewResult.model;
               translatedTitleZh = insights.titleTranslationZh;
               summaryZh = insights.summaryZh;
               logGenerate('insights_ready', {
@@ -2103,6 +2488,8 @@ export async function handleGenerateRoute(
               await sendSseEvent(writer, 'insights', {
                 ...insights,
                 titleTranslationZh: translatedTitleZh,
+                warningCode: sectioningWarning ? 'sectioning_fallback' : undefined,
+                warning: sectioningWarning || undefined,
               });
 
               await sendSseEvent(writer, 'meta', {
@@ -2222,12 +2609,11 @@ export async function handleGenerateRoute(
                     code: sliceError.code,
                     message: sliceError.publicMessage,
                   });
-                  if (sliceError.code === 'gemini_timeout') {
-                    await sendSseEvent(writer, 'warning', {
-                      code: sliceError.code,
-                      message: sliceError.publicMessage,
-                    });
-                  }
+                  await sendSseEvent(writer, 'warning', {
+                    code: sliceError.code,
+                    title: '部分片段翻译失败',
+                    message: `片段 ${section.startLabel}-${section.endLabel} 翻译失败，已自动回退为原文片段。${sliceError.publicMessage ? ` ${sliceError.publicMessage}` : ''}`.trim(),
+                  });
                   await emitHtml(
                     'dialogue-replace',
                     wrapDialogueSectionHtml(sectionId, renderFallbackSectionHtml(section)),
@@ -2263,6 +2649,7 @@ export async function handleGenerateRoute(
                 summary: '',
                 speakers: [],
                 model: '',
+                warningCode: appError.code,
                 warning: appError.publicMessage,
               });
 
@@ -2297,6 +2684,7 @@ export async function handleGenerateRoute(
             summaryZh,
             geminiTranslationComplete,
             translationNeedsRefresh,
+            consumesDailyGeminiTranslationLimit: geminiTranslationComplete && !translationNeedsRefresh,
           };
 
           if (sharedArticleCacheEnabled && geminiTranslationComplete && !translationNeedsRefresh) {
@@ -2344,12 +2732,6 @@ export async function handleGenerateRoute(
 
     return response;
   } catch (error) {
-    const appError = AppError.from(error);
-    return new Response(formatErrorMessage(appError), {
-      status: appError.status,
-      headers: {
-        'content-type': 'text/plain; charset=utf-8',
-      },
-    });
+    return jsonErrorResponse(error);
   }
 }

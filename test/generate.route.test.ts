@@ -37,10 +37,18 @@ vi.mock('../src/services/gemini', async () => {
   };
 });
 
-import { handleGenerateRoute } from '../src/routes/generate';
+import {
+  buildTranscriptSectionsFromTimestampBoundaries,
+  handleGenerateRoute,
+  handleGeminiTranslationUsageRoute,
+} from '../src/routes/generate';
 
 const TEST_VIDEO_ID = 'abc123xyz90';
 const TEST_VIDEO_URL = `https://www.youtube.com/watch?v=${TEST_VIDEO_ID}`;
+
+function createSuccessfulGeminiCookie(successCount = 3, dayKey = '2026-04-05'): string {
+  return `xvc_gemini_success=${dayKey}.${successCount}`;
+}
 
 function createBundle(overrides: Partial<TranscriptBundle> = {}): TranscriptBundle {
   const chunks = overrides.chunks ?? [
@@ -117,6 +125,30 @@ describe('handleGenerateRoute', () => {
     translateTranscriptSectionToZhMock.mockReset();
   });
 
+  it('returns a structured JSON error before streaming starts when the URL is missing', async () => {
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        readingMode: 'quick',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {};
+    const { ctx } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toEqual({
+      code: 'missing_url',
+      message: '请输入一个带字幕的 YouTube 视频链接。',
+      status: 400,
+    });
+  });
+
   it('replays curated hot content without fetching transcripts or calling Gemini', async () => {
     const request = new Request('https://example.com/api/generate', {
       method: 'POST',
@@ -172,6 +204,150 @@ describe('handleGenerateRoute', () => {
     expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
     expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
     expect(body).toContain('event: done');
+  });
+
+  it('replays curated hot content even when the free Gemini limit is exhausted', async () => {
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: 'https://www.youtube.com/watch?v=xRh2sVcNXQ8',
+        readingMode: 'full',
+        localDayKey: '2026-04-05',
+      }),
+      headers: {
+        'content-type': 'application/json',
+        cookie: createSuccessfulGeminiCookie(),
+      },
+    });
+    const env: Env = {};
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
+    expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
+    expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
+    expect(body).toContain('event: done');
+  });
+
+  it('replays shared cached articles even when the free Gemini limit is exhausted', async () => {
+    const contentCache = createContentCacheMock({
+      article: {
+        version: 6,
+        cachedAt: Date.now(),
+        articleHtml: '<header class="article-hero" data-article-hero>cached article</header>',
+        meta: {
+          videoId: TEST_VIDEO_ID,
+          readingMode: 'full',
+          sourceTitle: 'Cached title',
+          geminiTranslationComplete: true,
+          translationNeedsRefresh: false,
+        },
+      },
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+        localDayKey: '2026-04-05',
+      }),
+      headers: {
+        'content-type': 'application/json',
+        cookie: createSuccessfulGeminiCookie(),
+      },
+    });
+    const env: Env = {
+      CONTENT_CACHE: contentCache,
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
+    expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
+    expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
+    expect(body).toContain('"stage":"cloud_article_cache_hit"');
+    expect(body).toContain('cached article');
+    expect(body).toContain('event: done');
+  });
+
+  it('returns a limit error before Gemini generation when the free quota is exhausted', async () => {
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+        localDayKey: '2026-04-05',
+      }),
+      headers: {
+        'content-type': 'application/json',
+        cookie: createSuccessfulGeminiCookie(),
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
+    expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
+    expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
+    expect(body).toContain('event: error');
+    expect(body).toContain('"code":"daily_gemini_translation_limit_exceeded"');
+    expect(body).toContain('今天最多可完成 3 次成功的 Gemini 翻译');
+  });
+
+  it('increments the successful Gemini usage cookie after a completed translation', async () => {
+    const request = new Request('https://example.com/api/gemini-translation-usage', {
+      method: 'POST',
+      body: JSON.stringify({
+        localDayKey: '2026-04-05',
+      }),
+      headers: {
+        'content-type': 'application/json',
+        cookie: createSuccessfulGeminiCookie(1),
+      },
+    });
+
+    const response = await handleGeminiTranslationUsageRoute(request);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('set-cookie')).toContain('xvc_gemini_success=2026-04-05.2');
+    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+  });
+
+  it('returns the remaining free Gemini quota for the current local day', async () => {
+    const request = new Request('https://example.com/api/gemini-translation-usage?localDayKey=2026-04-05', {
+      method: 'GET',
+      headers: {
+        cookie: createSuccessfulGeminiCookie(1),
+      },
+    });
+
+    const response = await handleGeminiTranslationUsageRoute(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      localDayKey: '2026-04-05',
+      limit: 3,
+      used: 1,
+      remaining: 2,
+    });
   });
 
   it('passes Supadata transcript provider options to the fetcher', async () => {
@@ -243,6 +419,51 @@ describe('handleGenerateRoute', () => {
     );
 
     const body = await bodyPromise;
+    expect(body).toContain('event: done');
+  });
+
+  it('falls back to fixed 20-minute sections when quick sectioning fails', async () => {
+    const bundle = createBundle({
+      durationSeconds: 25 * 60,
+      chunks: [
+        { start: 0, end: 30, text: 'Opening line' },
+        { start: 10 * 60, end: 10 * 60 + 20, text: 'Middle line' },
+        { start: 20 * 60 + 5, end: 20 * 60 + 25, text: 'Later line' },
+      ],
+      transcriptText: 'Opening line\nMiddle line\nLater line',
+    });
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockRejectedValue(
+      new Error('sectioning failed'),
+    );
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'quick',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('AI 分段失败，回退到固定时间分段');
+    expect(body).toContain('event: warning');
+    expect(body).toContain('已回退到固定时间分段');
+    expect(body).toContain('section-theme-title-text\\">片段 1<');
+    expect(body).toContain('section-theme-title-text\\">片段 2<');
+    expect(body).toContain('"translationNeedsRefresh":true');
     expect(body).toContain('event: done');
   });
 
@@ -343,11 +564,246 @@ describe('handleGenerateRoute', () => {
     expect(body).not.toContain('回答 · Marc');
   });
 
+  it('retries full-mode sectioning when Gemini returns invalid timestamps', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock
+      .mockResolvedValueOnce({
+        titleTranslationZh: '测试标题',
+        summaryZh: '测试高亮',
+        summary: 'Highlight sentence.',
+        speakers: ['Jen', 'Marc'],
+        sections: [
+          {
+            startLabel: '26:99',
+            endLabel: '26:30',
+            subtitle: 'Bad section',
+            summary: 'Bad summary',
+            topicTitleZh: '错误切片',
+            topicSummaryZh: '时间没对上。',
+            subtitleZh: '错位',
+            summaryZh: '时间错位。',
+            transcript: '',
+          },
+        ],
+        model: 'test-sections-model',
+      })
+      .mockResolvedValueOnce({
+        titleTranslationZh: '测试标题',
+        summaryZh: '测试高亮',
+        summary: 'Highlight sentence.',
+        speakers: ['Jen', 'Marc'],
+        sections: [
+          {
+            startLabel: '00:00',
+            endLabel: '00:15',
+            subtitle: 'Opening',
+            summary: 'Covers the opening lines.',
+            topicTitleZh: '开场判断',
+            topicSummaryZh: '先交代核心背景。',
+            subtitleZh: '开场',
+            summaryZh: '概述开场内容。',
+            transcript: '',
+          },
+        ],
+        model: 'test-sections-model',
+      });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:15',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] Closing line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+        { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+          answers: [{ timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' }],
+          turns: [
+            { timestamp: '00:00', speaker: 'Jen', textZh: '开场白。' },
+            { timestamp: '00:15', speaker: 'Marc', textZh: '结束语。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(generateTranscriptSectionsMock).toHaveBeenCalledTimes(2);
+    expect(body).toContain('分段时间戳对齐失败，正在自动重试（1/1）');
+    expect(body).toContain('开场白。');
+    expect(body).toContain('event: done');
+  });
+
+  it('accepts small timestamp drift when mapping Gemini sections back to transcript chunks', () => {
+    const bundle = createBundle({
+      durationSeconds: 31,
+      chunks: [
+        { start: 0, end: 15, text: 'Opening line' },
+        { start: 15, end: 31, text: 'Closing line' },
+      ],
+      transcriptText: 'Opening line\nClosing line',
+    });
+
+    const sections = buildTranscriptSectionsFromTimestampBoundaries(bundle, [
+      {
+        startLabel: '00:01',
+        endLabel: '00:16',
+        subtitle: 'Opening',
+        summary: 'Near-match timestamps',
+      },
+    ]);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.startLabel).toBe('00:00');
+    expect(sections[0]?.endLabel).toBe('00:15');
+    expect(sections[0]?.transcript).toContain('[00:00] Opening line');
+    expect(sections[0]?.transcript).toContain('[00:15] Closing line');
+  });
+
+  it('keeps Gemini section ordering even when adjacent boundaries drift by several seconds', () => {
+    const bundle = createBundle({
+      durationSeconds: 27 * 60,
+      chunks: [
+        { start: 25 * 60, end: 25 * 60 + 10, text: 'First point' },
+        { start: 25 * 60 + 30, end: 25 * 60 + 40, text: 'Bridge point' },
+        { start: 26 * 60 + 15, end: 26 * 60 + 25, text: 'Second point' },
+        { start: 26 * 60 + 45, end: 26 * 60 + 55, text: 'Wrap up' },
+      ],
+      transcriptText: 'First point\nBridge point\nSecond point\nWrap up',
+    });
+
+    const sections = buildTranscriptSectionsFromTimestampBoundaries(bundle, [
+      {
+        startLabel: '25:10',
+        endLabel: '26:08',
+        subtitle: 'Section A',
+        summary: 'First idea',
+      },
+      {
+        startLabel: '26:08',
+        endLabel: '26:40',
+        subtitle: 'Section B',
+        summary: 'Second idea',
+      },
+    ]);
+
+    expect(sections).toHaveLength(2);
+    expect(sections[0]?.startLabel).toBe('25:00');
+    expect(sections[0]?.endLabel).toBe('25:30');
+    expect(sections[0]?.transcript).toContain('First point');
+    expect(sections[0]?.transcript).toContain('Bridge point');
+    expect(sections[1]?.startLabel).toBe('26:15');
+    expect(sections[1]?.endLabel).toBe('26:45');
+    expect(sections[1]?.transcript).toContain('Second point');
+    expect(sections[1]?.transcript).toContain('Wrap up');
+  });
+
+  it('falls back to fixed 20-minute sections when full sectioning fails', async () => {
+    const bundle = createBundle({
+      durationSeconds: 25 * 60,
+      chunks: [
+        { start: 0, end: 30, text: 'Opening line' },
+        { start: 10 * 60, end: 10 * 60 + 20, text: 'Middle line' },
+        { start: 20 * 60 + 5, end: 20 * 60 + 25, text: 'Later line' },
+      ],
+      transcriptText: 'Opening line\nMiddle line\nLater line',
+    });
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockRejectedValue(
+      new Error('sectioning failed'),
+    );
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '20:00',
+        subtitle: 'Transcript Section 1',
+        summary: 'Transcript content from 00:00 to 20:00.',
+        topicTitleZh: '固定切片',
+        topicSummaryZh: '按时间回退。',
+        subtitleZh: '固定切片',
+        summaryZh: '按时间回退。',
+        transcript: '[00:00] Opening line\n[10:00] Middle line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Host', textZh: '开场白。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '固定切片',
+          question: { timestamp: '00:00', speaker: 'Host', textZh: '开场白。' },
+          answers: [{ timestamp: '00:00', speaker: 'Host', textZh: '开场白。' }],
+          turns: [
+            { timestamp: '00:00', speaker: 'Host', textZh: '开场白。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('"warningCode":"sectioning_fallback"');
+    expect(body).toContain('section-theme-title-text\\">固定切片<');
+    expect(body).toContain('"translationNeedsRefresh":true');
+    expect(body).toContain('sectioning failed');
+    expect(body).toContain('event: done');
+  });
+
   it('skips shared article cache replay when the cached article is flagged for refresh', async () => {
     const bundle = createBundle();
     const contentCache = createContentCacheMock({
       article: {
-        version: 5,
+        version: 6,
         cachedAt: Date.now(),
         articleHtml: '<header data-article-hero>stale cached article</header>',
         meta: {
@@ -693,6 +1149,85 @@ describe('handleGenerateRoute', () => {
     expect(body).toContain('qa-speaker\\">Host<');
     expect(body).toContain('qa-speaker\\">Marc<');
     expect(body).not.toContain('qa-speaker\\">Unknown<');
+  });
+
+  it('renders empty speakers as host in translated dialogue even without overview speaker labels', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: [],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:30',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '开场判断',
+          topicSummaryZh: '先交代核心背景。',
+          subtitleZh: '开场',
+          summaryZh: '概述开场内容。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:30',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '开场判断',
+        topicSummaryZh: '先交代核心背景。',
+        subtitleZh: '开场',
+        summaryZh: '概述开场内容。',
+        transcript: '[00:00] Opening line\n[00:15] Closing line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: '', textZh: '问题。' },
+        { timestamp: '00:15', speaker: 'Emil', textZh: '回答。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '投资判断',
+          question: { timestamp: '00:00', speaker: '', textZh: '问题。' },
+          answers: [{ timestamp: '00:15', speaker: 'Emil', textZh: '回答。' }],
+          turns: [
+            { timestamp: '00:00', speaker: '', textZh: '问题。' },
+            { timestamp: '00:15', speaker: 'Emil', textZh: '回答。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">host<');
+    expect(body).toContain('qa-speaker\\">Emil<');
+    expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">host</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:00</span></div>');
   });
 
   it('renders multiple answer speakers for one question in order', async () => {

@@ -491,6 +491,78 @@ describe('mergeDialogueSectionBoundary', () => {
     ]);
   });
 
+  it('keeps a structured question at the start of the next group inside one section', () => {
+    const previous = createDialogueSlice({
+      turns: [
+        { timestamp: '00:00', speaker: 'Host', textZh: '模型是否具备意识？' },
+        { timestamp: '00:10', speaker: 'Vishal', textZh: '我认为它没有意识。' },
+        { timestamp: '00:20', speaker: 'Martin', textZh: '我也认为这可以排除。' },
+        { timestamp: '00:30', speaker: 'Martin', textZh: '大语言模型究竟是如何运作的？' },
+        { timestamp: '00:40', speaker: 'Vishal', textZh: '它本质上是在做概率预测。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '模型是否具备意识',
+          question: { timestamp: '00:00', speaker: 'Host', textZh: '模型是否具备意识？' },
+          answers: [
+            { timestamp: '00:10', speaker: 'Vishal', textZh: '我认为它没有意识。' },
+            { timestamp: '00:20', speaker: 'Martin', textZh: '我也认为这可以排除。' },
+          ],
+          turns: [
+            { timestamp: '00:00', speaker: 'Host', textZh: '模型是否具备意识？' },
+            { timestamp: '00:10', speaker: 'Vishal', textZh: '我认为它没有意识。' },
+            { timestamp: '00:20', speaker: 'Martin', textZh: '我也认为这可以排除。' },
+          ],
+        },
+        {
+          topicTitleZh: '模型工作原理',
+          question: { timestamp: '00:30', speaker: 'Martin', textZh: '大语言模型究竟是如何运作的？' },
+          answers: [
+            { timestamp: '00:40', speaker: 'Vishal', textZh: '它本质上是在做概率预测。' },
+          ],
+          turns: [
+            { timestamp: '00:30', speaker: 'Martin', textZh: '大语言模型究竟是如何运作的？' },
+            { timestamp: '00:40', speaker: 'Vishal', textZh: '它本质上是在做概率预测。' },
+          ],
+        },
+      ],
+    });
+    const next = createDialogueSlice({
+      turns: [
+        { timestamp: '00:50', speaker: 'Host', textZh: '后续问题。' },
+      ],
+    });
+
+    const [normalizedPrevious] = mergeDialogueSectionBoundary(previous, next, true);
+
+    expect(normalizedPrevious.groups).toEqual([
+      {
+        topicTitleZh: '模型是否具备意识',
+        question: { timestamp: '00:00', speaker: 'Host', textZh: '模型是否具备意识？' },
+        answers: [
+          { timestamp: '00:10', speaker: 'Vishal', textZh: '我认为它没有意识。' },
+          { timestamp: '00:20', speaker: 'Martin', textZh: '我也认为这可以排除。' },
+        ],
+        turns: [
+          { timestamp: '00:00', speaker: 'Host', textZh: '模型是否具备意识？' },
+          { timestamp: '00:10', speaker: 'Vishal', textZh: '我认为它没有意识。' },
+          { timestamp: '00:20', speaker: 'Martin', textZh: '我也认为这可以排除。' },
+        ],
+      },
+      {
+        topicTitleZh: '模型工作原理',
+        question: { timestamp: '00:30', speaker: 'Martin', textZh: '大语言模型究竟是如何运作的？' },
+        answers: [
+          { timestamp: '00:40', speaker: 'Vishal', textZh: '它本质上是在做概率预测。' },
+        ],
+        turns: [
+          { timestamp: '00:30', speaker: 'Martin', textZh: '大语言模型究竟是如何运作的？' },
+          { timestamp: '00:40', speaker: 'Vishal', textZh: '它本质上是在做概率预测。' },
+        ],
+      },
+    ]);
+  });
+
   it('merges same-speaker spillover between adjacent groups inside one section before rendering', () => {
     const previous = createDialogueSlice({
       turns: [

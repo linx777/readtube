@@ -661,7 +661,7 @@ describe('parseTranscriptDialoguePayload', () => {
     });
   });
 
-  it('salvages translated turns when multiple answers reuse the same speaker', () => {
+  it('preserves structured question and answers when multiple answers reuse the same speaker', () => {
     expect(parseTranscriptDialoguePayload({
       candidates: [
         {
@@ -712,6 +712,23 @@ describe('parseTranscriptDialoguePayload', () => {
       groups: [
         {
           topicTitleZh: 'AI价值判断',
+          question: {
+            timestamp: '00:12',
+            speaker: 'Jen',
+            textZh: '你们分别怎么看 AI 的长期影响？',
+          },
+          answers: [
+            {
+              timestamp: '00:35',
+              speaker: 'Marc',
+              textZh: '我认为它会重塑软件和生产力。',
+            },
+            {
+              timestamp: '00:48',
+              speaker: 'Marc',
+              textZh: '我也认为它会改变组织流程。',
+            },
+          ],
           turns: [
             {
               timestamp: '00:12',
@@ -732,7 +749,6 @@ describe('parseTranscriptDialoguePayload', () => {
         },
       ],
       model: 'gemini-3.1-pro-preview',
-      usedFallback: true,
     });
   });
 

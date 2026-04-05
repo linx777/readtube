@@ -1,10 +1,11 @@
 import type { TranscriptBundle } from './youtube';
+import { AppError, type ErrorResponsePayload, toErrorResponsePayload } from './errors';
 import { isTranscriptBundle } from './youtube';
 import { listCuratedHotVideoItems } from '../data/curated-hot-content';
 import { getCuratedGeneratedArticle } from '../data/curated-hot-articles';
 
 const TRANSCRIPT_CACHE_VERSION = 2;
-const ARTICLE_CACHE_VERSION = 5;
+const ARTICLE_CACHE_VERSION = 6;
 const DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_HOT_LIMIT = 6;
 const MAX_HOT_LIMIT = 12;
@@ -49,6 +50,11 @@ export interface HotVideoItem {
   youtubeUrl: string;
   viewCount: number;
   updatedAt: number;
+}
+
+export interface HotVideoListResult {
+  items: HotVideoItem[];
+  warning?: ErrorResponsePayload;
 }
 
 export interface HotVideoViewInput {
@@ -250,7 +256,7 @@ export async function writeCachedGeneratedArticle(
 export async function listHotVideos(
   env: ContentCacheBindings,
   limit?: number,
-): Promise<HotVideoItem[]> {
+): Promise<HotVideoListResult> {
   const normalizedLimit = normalizeHotLimit(limit);
   const curatedItems = listCuratedHotVideoItems().map((item) => ({
     videoId: item.videoId,
@@ -263,7 +269,9 @@ export async function listHotVideos(
   }));
 
   if (!env.HOT_DB) {
-    return curatedItems.slice(0, normalizedLimit);
+    return {
+      items: curatedItems.slice(0, normalizedLimit),
+    };
   }
 
   try {
@@ -300,19 +308,31 @@ export async function listHotVideos(
       });
     }
 
-    return [...mergedItems.values()]
-      .sort((left, right) => (
-        right.viewCount - left.viewCount
-        || right.updatedAt - left.updatedAt
-        || left.title.localeCompare(right.title)
-      ))
-      .slice(0, normalizedLimit);
+    return {
+      items: [...mergedItems.values()]
+        .sort((left, right) => (
+          right.viewCount - left.viewCount
+          || right.updatedAt - left.updatedAt
+          || left.title.localeCompare(right.title)
+        ))
+        .slice(0, normalizedLimit),
+    };
   } catch (error) {
     console.error('[storage] hot_list_query_failed', {
       limit: normalizedLimit,
       error: error instanceof Error ? error.message : error,
     });
-    return curatedItems.slice(0, normalizedLimit);
+    return {
+      items: curatedItems.slice(0, normalizedLimit),
+      warning: toErrorResponsePayload(
+        new AppError(
+          'hot_list_stale',
+          '热门列表暂时无法更新，先为你展示默认内容。',
+          200,
+          { cause: error },
+        ),
+      ),
+    };
   }
 }
 
@@ -361,5 +381,11 @@ export async function recordHotVideoView(
       videoId,
       error: error instanceof Error ? error.message : error,
     });
+    throw new AppError(
+      'hot_view_record_failed',
+      '最近浏览暂时没有保存成功，请稍后再试。',
+      500,
+      { cause: error },
+    );
   }
 }
