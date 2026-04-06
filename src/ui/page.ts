@@ -1,4 +1,3 @@
-const SAMPLE_URL = 'https://www.youtube.com/watch?v=xRh2sVcNXQ8';
 const HOT_CARD_PREFLIGHT_DELAY_MS = 700;
 const HOT_CARD_LOADING_TITLE = '正在打开热门内容';
 const HOT_CARD_LOADING_BODY = '我们正在为您加载已准备好的精选内容，请稍等片刻。';
@@ -1347,6 +1346,10 @@ function renderStyles(): string {
       border-radius: 999px;
       background: linear-gradient(90deg, #1f2328 0 61%, rgba(31, 35, 40, 0.12) 61% 100%);
       transform: translateY(-50%);
+    }
+
+    .reading-progress::before {
+      background: linear-gradient(90deg, #1f2328 0 0%, rgba(31, 35, 40, 0.12) 0 100%);
     }
 
     .hero-title-dot {
@@ -4382,7 +4385,7 @@ function renderScript(): string {
     }
 
     function syncInputMirror() {
-      inputMirror.textContent = (input.value || '').trim() || 'https://www.youtube.com/watch?v=...';
+      inputMirror.textContent = (input.value || '').trim();
       syncSubmitState();
     }
 
@@ -5921,10 +5924,9 @@ export function renderAppPage(options: { canonicalUrl: string; iconUrl: string }
                           name="youtubeUrl"
                           type="url"
                           required
-                          value="${SAMPLE_URL}"
                           placeholder="在这里粘贴 YouTube 视频链接，开启全新观看体验。"
                         />
-                        <div class="input-mirror" data-input-mirror>${SAMPLE_URL}</div>
+                        <div class="input-mirror" data-input-mirror></div>
                       </div>
                       <div class="topic-pills" aria-label="Content categories" data-search-animate style="--search-delay: 180ms;">
                         <span class="topic-pill">科技</span>
