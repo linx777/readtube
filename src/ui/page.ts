@@ -563,15 +563,12 @@ function renderStyles(): string {
       --reading-progress-percent: 0%;
       position: relative;
       width: 100%;
-      height: 5px;
+      height: 20px;
       border-radius: 999px;
-      background: rgba(121, 102, 77, 0.42);
+      background: transparent;
       cursor: grab;
       touch-action: none;
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.55),
-        inset 0 -1px 0 rgba(83, 67, 47, 0.08),
-        0 0 0 1px rgba(95, 76, 51, 0.12);
+      box-shadow: none;
     }
 
     .reading-progress.dragging {
@@ -579,13 +576,17 @@ function renderStyles(): string {
     }
 
     .reading-progress-fill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
       width: 100%;
-      height: 100%;
+      height: 4px;
       display: block;
-      border-radius: inherit;
+      border-radius: 999px;
       background: linear-gradient(90deg, rgba(123, 99, 69, 0.92), rgba(193, 171, 138, 0.92));
       transform-origin: left center;
-      transform: scaleX(var(--reading-progress));
+      transform: translateY(-50%) scaleX(var(--reading-progress));
       transition: transform 160ms ease;
     }
 
@@ -1335,7 +1336,8 @@ function renderStyles(): string {
       height: 20px;
     }
 
-    .hero-title-rail::before {
+    .hero-title-rail::before,
+    .reading-progress::before {
       content: "";
       position: absolute;
       left: 0;
@@ -2873,7 +2875,7 @@ function renderStyles(): string {
       }
 
       .reading-progress {
-        height: 8px;
+        height: 16px;
       }
 
       .topbar[data-view="article"] .topnav {
@@ -2931,7 +2933,12 @@ function renderStyles(): string {
         height: 16px;
       }
 
-      .hero-title-rail::before {
+      .hero-title-rail::before,
+      .reading-progress::before {
+        height: 3px;
+      }
+
+      .reading-progress-fill {
         height: 3px;
       }
 
