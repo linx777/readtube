@@ -1,4 +1,9 @@
-import type { TranscriptDialogueSliceResult, TranscriptSection } from '../services/gemini';
+import type {
+  TranscriptDialogueGroup,
+  TranscriptDialogueSliceResult,
+  TranscriptDialogueTurn,
+  TranscriptSection,
+} from '../services/gemini';
 import {
   buildStoredFullRendering,
   buildStoredQuickRendering,
@@ -25,25 +30,72 @@ export interface CuratedHotVideoItem {
   updatedAt: number;
 }
 
+interface DialogueGroupInput {
+  topicTitleZh: string;
+  questionTimestamp: string;
+  question: string;
+  answerTimestamp: string;
+  answer: string;
+  questionSpeaker?: string;
+  answerSpeaker?: string;
+}
+
 const CURATED_MODEL = 'manual_curated_translation';
-const CURATED_UPDATED_AT = Date.parse('2026-04-05T00:00:00Z');
+const CURATED_UPDATED_AT = Date.parse('2026-04-06T00:00:00Z');
 const CURATED_VIDEO_ID = 'xRh2sVcNXQ8';
+const CURATED_TITLE_ZH = '马克·安德森的2026年展望：AI时间线、中美竞争与AI价格';
+const CURATED_SUMMARY_ZH = '从 AI 革命的历史位置、商业模式与芯片竞争，到中美博弈、监管分歧和风投策略，Marc Andreessen 系统梳理了这场 AI 浪潮里的关键万亿美元问题。';
+const CURATED_SUMMARY_EN = 'Marc Andreessen frames AI as an 80-year computing turn and walks through monetization, chips, China, regulation, pricing, startups, and why venture portfolios are built for uncertainty.';
+const CURATED_SPEAKERS = ['Jen', 'Marc'];
 
 function joinText(parts: string[]): string {
   return parts.join('');
 }
 
-function createDialogueSlice(input: {
+function createTurn(
+  timestamp: string,
+  speaker: string,
+  textZh: string,
+): TranscriptDialogueTurn {
+  return {
+    timestamp,
+    speaker,
+    textZh,
+  };
+}
+
+function createDialogueSection(input: {
   startLabel: string;
   endLabel: string;
   titleZh: string;
   summaryZh: string;
-  topicTitleZh: string;
-  questionSpeaker: string;
-  question: string;
-  answerSpeaker: string;
-  answer: string;
+  groups: DialogueGroupInput[];
 }): TranscriptDialogueSliceResult {
+  const groups: TranscriptDialogueGroup[] = [];
+  const turns: TranscriptDialogueTurn[] = [];
+
+  input.groups.forEach((groupInput) => {
+    const question = createTurn(
+      groupInput.questionTimestamp,
+      groupInput.questionSpeaker || 'Jen',
+      groupInput.question,
+    );
+    const answer = createTurn(
+      groupInput.answerTimestamp,
+      groupInput.answerSpeaker || 'Marc',
+      groupInput.answer,
+    );
+
+    const groupTurns = [question, answer];
+    groups.push({
+      topicTitleZh: groupInput.topicTitleZh,
+      question,
+      answers: [answer],
+      turns: groupTurns,
+    });
+    turns.push(...groupTurns);
+  });
+
   return {
     section: {
       startLabel: input.startLabel,
@@ -56,47 +108,8 @@ function createDialogueSlice(input: {
       subtitleZh: input.titleZh,
       summaryZh: input.summaryZh,
     },
-    turns: [
-      {
-        timestamp: input.startLabel,
-        speaker: input.questionSpeaker,
-        textZh: input.question,
-      },
-      {
-        timestamp: input.endLabel,
-        speaker: input.answerSpeaker,
-        textZh: input.answer,
-      },
-    ],
-    groups: [
-      {
-        topicTitleZh: input.topicTitleZh,
-        question: {
-          timestamp: input.startLabel,
-          speaker: input.questionSpeaker,
-          textZh: input.question,
-        },
-        answers: [
-          {
-            timestamp: input.endLabel,
-            speaker: input.answerSpeaker,
-            textZh: input.answer,
-          },
-        ],
-        turns: [
-          {
-            timestamp: input.startLabel,
-            speaker: input.questionSpeaker,
-            textZh: input.question,
-          },
-          {
-            timestamp: input.endLabel,
-            speaker: input.answerSpeaker,
-            textZh: input.answer,
-          },
-        ],
-      },
-    ],
+    turns,
+    groups,
     model: CURATED_MODEL,
   };
 }
@@ -118,165 +131,358 @@ const sourceBundle: TranscriptBundle = {
 };
 
 const fullDialogueSlices: TranscriptDialogueSliceResult[] = [
-  createDialogueSlice({
+  createDialogueSection({
     startLabel: '00:00',
-    endLabel: '00:20',
-    titleZh: 'AI公司的收入增长与产品形态演进',
-    summaryZh: '收入起飞，形态未定',
-    topicTitleZh: '收入起飞',
-    questionSpeaker: 'Jen',
-    question: '目前AI公司的商业化表现和收入增长，大致处于什么状态？',
-    answerSpeaker: 'Marc',
-    answer: joinText([
-      '这一波AI公司正在经历近乎前所未见的收入起飞。这里说的不是纸面上的想象空间，而是真实的客户需求转化为实际营收，最终体现在银行账户里的现金流，而且爬升速度极其惊人。',
-      '我们看到，真正领先、并且做出实质性突破的AI公司，收入增长曲线已经快到超过我过去见过的任何一类科技企业。',
-      '与此同时，我非常怀疑今天大家正在使用的这些AI产品形态，会是5年或10年后的最终形态。我更倾向于认为，未来的产品会比现在复杂得多、成熟得多、也强大得多。',
-      '所以从这个意义上看，我们现在仍然在很早期的位置，后面还有很长的路要走。',
-    ]),
-  }),
-  createDialogueSlice({
-    startLabel: '00:20',
-    endLabel: '00:48',
-    titleZh: '战略选择与风投押注逻辑',
-    summaryZh: '企业单选，风投多押',
-    topicTitleZh: '多线押注',
-    questionSpeaker: 'Jen',
-    question: '面对AI带来的这些根本性战略和经济问题，公司与风险投资机构的应对方式有什么不同？',
-    answerSpeaker: 'Marc',
-    answer: joinText([
-      '这些问题本身就是价值数万亿美元的命题，但现在还远远谈不上已有定论。',
-      '一旦某种能力被证明可行，后来者往往就会迅速跟上，哪怕他们手里的资源少得多。',
-      '对一家公司来说，如果它面对的是这种开放性的战略或经济问题，那通常意味着真正的大考来了。企业必须给出答案，而且一旦判断失误，后果会非常严重。',
-      '但风投机构的优势在于，我们不需要只押一条路。我们可以并行布局多种可能成立的策略。对于每一条我们判断“有现实胜算”的路径，我们都会积极下注。',
-    ]),
-  }),
-  createDialogueSlice({
-    startLabel: '00:48',
-    endLabel: '01:14',
-    titleZh: 'AI的公众态度与真实行为',
-    summaryZh: '口头恐慌，实际在用',
-    topicTitleZh: '态度反差',
-    questionSpeaker: 'Jen',
-    question: '大众对AI的认知，和他们真实的使用行为之间，是否存在明显落差？',
-    answerSpeaker: 'Marc',
-    answer: joinText([
-      '如果你想理解人们到底怎么想、怎么做，通常有两种方法：一种是直接问他们，另一种是观察他们的行为。',
-      '现实中，在很多人类活动领域里，人们口头上说的，和他们真正做的，往往完全不是一回事。',
-      '举例来说，如果你去调查美国选民对AI的看法，他们给出的回答很可能是高度恐慌的：觉得AI会摧毁就业，会把一切搞砸，看起来像是全面失控。',
-      '但如果你去看他们实际的“显性偏好”，你会发现另一幅图景：他们其实已经在广泛使用AI。',
-    ]),
-  }),
-  createDialogueSlice({
-    startLabel: '01:46',
     endLabel: '09:10',
-    titleZh: 'AI革命的历史位置与当前所处阶段',
-    summaryZh: '八十年革命刚进第三年',
-    topicTitleZh: '革命位置',
-    questionSpeaker: 'Jen',
-    question: '我们正身处AI革命的正中央。Marc，你觉得现在大概走到了第几局？你最兴奋的点是什么？',
-    answerSpeaker: 'Marc',
-    answer: joinText([
-      '首先，在我看来，这是我一生中见过最重大的技术革命。就量级而言，它显然已经超过互联网。真正可类比的对象，更接近微处理器、蒸汽机、电力，甚至轮子的发明。这是一个极大级别的技术转折。',
-      '如果往前追溯，整个计算机产业过去80年基本都沿着“加法机”这条路径发展：我们造出了极端精密、计算能力惊人的机器，但它们并不擅长以人类喜欢的方式与人类互动，无法自然理解语言、语音和认知语境。',
-      '可事实上，早在上世纪中叶，人们就已经提出了另一条路径，用神经网络去模拟人类认知。最早的神经网络论文在1943年就已经出现了。',
-      '只是这条路在之后的几十年里，经历了长期的反复：一轮又一轮乐观预期，随后又一轮又一轮失望。直到2022年底ChatGPT出现，大家才突然意识到：原来这条路径真的可以跑通。某种意义上，我们现在只是这场80年长周期革命真正兑现成果后的第三年左右。',
-      '而最让人兴奋的是，这项技术已经呈现出高度民主化的特征。今天，世界上最先进的一批AI能力，普通人直接就能体验。你可以打开不同产品，亲自感受它们的表现；视频、音乐等方向也同样如此。',
-      '与此同时，硅谷对这波浪潮的反应极其迅猛。它最神奇的地方，不再是“制造硅”，而是它能持续回收前几波技术浪潮积累的人才、资本和热情，再把它们重新配置到新一代技术周期中。',
-      '这正是当下AI正在发生的事情。对我来说，最直观的感受就是：我几乎每天都会被新的研究进展和新产品震惊到。一方面，我们持续跟踪底层科研进展，几乎天天都能看到让我拍案叫绝的新论文、新能力、新突破；另一方面，我们也不断看到新的创业公司和产品涌现，其中不少都让人有一种“下巴掉下来”的感觉。',
-      '当然，这个过程不会是线性平滑的。它一定会伴随波动、失误、成本问题，以及过度承诺后的回调。某些阶段人们会发现，有些东西没有预想中好用，或者经济性还不成立。',
-      '但即便如此，这项技术展现出来的能力仍然带有某种“魔法感”。无论是消费者还是企业，在真正上手之后，大多都能感受到这一点。而这种体验最终会反馈到商业指标上，你会看到收入的真实起飞。',
-      '因此，从各个角度综合来看，我都很难相信这场浪潮已经到顶。相反，它给我的感觉是：一切都还在展开，产品本身还非常早期，未来一定会变得更加成熟和复杂。',
-    ]),
+    titleZh: '革命定位',
+    summaryZh: '仍在早期',
+    groups: [
+      {
+        topicTitleZh: '八十年路线的兑现时刻',
+        questionTimestamp: '01:46',
+        answerTimestamp: '01:51',
+        question: '你如何定义这场 AI 革命的历史意义？我们现在大概处于什么阶段？',
+        answer: joinText([
+          '这是我一生中见过最大的一次技术革命，量级上更接近微处理器、电力、蒸汽机，而不只是又一次互联网升级。',
+          '如果把时间拉长看，这其实是一场酝酿了八十多年的技术路线终于开始兑现。过去计算机产业主要建立在“计算机器”上，而今天 AI 真正让“模拟人类认知”这条路线跑通了，ChatGPT 只是第一次把这件事大规模展示给了世界。',
+          '所以我会说，我们现在仍然非常早期。技术刚刚证明自己可行，产品形态也远未定型，但能力提升和产业反应都已经非常强烈。',
+        ]),
+      },
+      {
+        topicTitleZh: '收入飙升与产品早期',
+        questionTimestamp: '00:00',
+        answerTimestamp: '00:00',
+        question: '目前 AI 公司的商业表现和收入增长情况如何？',
+        answer: joinText([
+          '这一波 AI 公司的收入增长速度是前所未有的，而且这不是纸面故事，而是真实需求转化成了真钱。',
+          '尤其是那些真正做出突破、产品足够有吸引力的公司，增速比我过去见过的科技公司都更快。',
+          '这也说明行业大概率还在早期。因为今天的 AI 产品在我看来仍然很初级，我不认为 5 到 10 年后人们还会以现在这种形态使用 AI。',
+          '未来产品一定会更成熟、更复杂，也更强大。',
+        ]),
+      },
+      {
+        topicTitleZh: '企业单选与风投多押',
+        questionTimestamp: '00:20',
+        answerTimestamp: '00:20',
+        question: '面对 AI 带来的重大战略不确定性，企业和风投机构的应对方式有什么不同？',
+        answer: joinText([
+          'AI 带来的很多问题，都是万亿美元级别的问题，但现在还没有确定答案。',
+          '对企业来说，这很危险，因为企业必须做战略选择，一旦选错，代价会很大。',
+          '但风投可以同时押注多条路径。只要我们判断某个方向有成功可能，就可以配置资本去覆盖，因此风投在面对这种高度不确定的新技术时，比单一公司更灵活。',
+        ]),
+      },
+      {
+        topicTitleZh: '口头焦虑与真实采纳',
+        questionTimestamp: '00:48',
+        answerTimestamp: '00:48',
+        question: '为什么公众一边对 AI 表达焦虑，一边又在实际生活中持续使用它？',
+        answer: joinText([
+          '理解人有两种方法：一种是听他们怎么说，另一种是看他们怎么做。AI 这个话题上，这两者明显不一致。',
+          '如果你问人们怎么看 AI，很多人会表现出焦虑和恐慌；但如果你看他们的真实行为，会发现他们已经在使用 AI。',
+          '也就是说，公开表达的是担忧，真实偏好体现的却是采纳。',
+        ]),
+      },
+    ],
   }),
-  createDialogueSlice({
+  createDialogueSection({
     startLabel: '09:11',
     endLabel: '15:52',
-    titleZh: 'AI商业模式、扩散速度与成本结构',
-    summaryZh: '智能按量卖，成本持续降',
-    topicTitleZh: '智能经济',
-    questionSpeaker: 'John',
-    question: '关于AI，有一种常见质疑是：虽然收入规模很大，但支出也在同步膨胀，导致商业上似乎并不划算。你觉得这类讨论通常忽略了什么？',
-    answerSpeaker: 'Marc',
-    answer: joinText([
-      '先从最基础的商业模式讲起。现在这个行业大体上有两种核心模式：一种是面向消费者的模式，另一种是企业/基础设施模式。',
-      '先说消费者侧。很多人会问，AI是不是像当年的互联网革命？答案是：有点像，但又很不一样。互联网当年最大的问题，是我们必须先把互联网本身建出来。这意味着要铺光纤、建移动基站、出货大量智能手机、平板和电脑，把整个基础设施一层层搭好。这个过程花了几十年。',
-      '而AI不同。今天互联网和智能终端已经部署完成，全球已有50亿到60亿人连在网络上。也就是说，AI不需要再重复建设一套新的物理底座，它直接借助现成的互联网进行扩散。你没法“下载”电力，也没法“下载”自来水系统，但你可以直接“下载”AI。正因为如此，AI消费产品的普及速度，理论上可以快到前所未有。',
-      '而且它们的变现能力也很强。尤其让我印象深刻的是，这一代AI公司在定价上比过去的SaaS公司和消费互联网公司更大胆、更灵活。比如现在，个人用户每月200到300美元的订阅档位，已经逐渐开始变得常见。这种对高价格带的探索，其实是在主动放大市场空间。',
-      '再看企业侧，本质问题只有一个：智能到底值多少钱？如果AI能提高客服评分、带来更多增购、降低流失、优化营销表现，或者让产品本身拥有新的智能能力，那么这些都对应着直接的商业回报。企业不是在为一个抽象概念买单，而是在为可量化的业务结果付费。',
-      '在这背后，还有一个极其关键的因素：AI的核心商业模式，本质上有点像“按杯卖智能”，也就是按需购买Token。与此同时，AI的单位成本下降速度，甚至比摩尔定律还要快。所有输入要素按单位计算的成本，几乎都在快速下滑。这种成本的剧烈通缩，会进一步刺激更大规模的需求增长。',
-      '至于大家担心的GPU短缺、芯片短缺、数据中心容量不足，这些问题确实存在，但从历史经验看，凡是能被物理复制的短缺，最终都会因为需求而被快速复制出来。短缺往往会引来过度扩张，过剩又会重新压低成本。未来十年，AI公司的单位成本大概率会像石头一样往下掉。',
-      '所以，微观层面的盈利问题当然值得讨论，但从宏观方向上看，驱动力其实非常强。考虑到这项技术对消费者和企业的基础价值，再加上人们不断发现它在现实生活和商业中的新用途，我很难想象它不会继续高速增长，并创造出极其庞大的收入规模。',
-    ]),
+    titleZh: '智能经济',
+    summaryZh: '收入涨成本降',
+    groups: [
+      {
+        topicTitleZh: '普及速度、付费意愿与成本结构',
+        questionTimestamp: '09:11',
+        answerTimestamp: '09:21',
+        question: 'AI 行业一边收入快速增长，一边支出也很高。应该怎样理解它的商业模式、普及速度和长期成本结构？',
+        answer: joinText([
+          'AI 的商业模式大致分成两类：消费者业务，以及企业和基础设施业务。',
+          '消费者侧最大的不同在于，互联网基础设施已经建好了，所以 AI 可以直接借助现成网络快速扩散到全球用户，这让它的普及速度远快于过去多数技术浪潮。',
+          '在企业侧，关键问题是“智能值多少钱”。如果 AI 能提高客服、营销、转化和产品能力，它就能直接创造商业回报，所以企业付费意愿会很强。',
+          '至于成本，虽然现在投入仍然很大，但长期趋势是单位成本持续下降。随着模型效率、芯片供给和基础设施优化推进，AI 的成本会越来越低，而更低成本又会进一步推高需求。',
+        ]),
+      },
+    ],
   }),
-  createDialogueSlice({
+  createDialogueSection({
     startLabel: '15:52',
-    endLabel: '19:50',
-    titleZh: 'GPU优化与模型规模演化',
-    summaryZh: '小模型正快速追赶',
-    topicTitleZh: '大小模型',
-    questionSpeaker: 'Marc',
-    question: 'AWS前不久提到，他们已经把GPU的使用寿命延长到了7年以上。这是否意味着GPU的经济寿命正在被拉长，优化空间也比前几个周期更大？',
-    answerSpeaker: 'John',
-    answer: joinText([
-      '是的，这是一个非常关键的观察。而它其实会进一步引出另一个重要问题：大模型和小模型之间的分化。',
-      '当前，大量数据中心建设仍然围绕大模型的训练和推理服务展开，这很自然。但与此同时，“小模型革命”也在同步发生。你会看到一个明显规律：领先模型推出之后，过上6到12个月，能力接近的小模型就会迅速出现。也就是说，大模型的新能力会很快被压缩到更小的参数规模里，并以更低成本重新提供出来。',
-      '举个例子，中国的Kimi模型，在最新版本中已经表现出非常强的推理能力。按照一些基准测试，它已经逼近GPT-5这一档能力，而且可以被压缩到在普通电脑上本地运行。这意味着，一家企业如果希望拥有接近顶级的推理能力，但又不愿承担超高托管成本，那么它完全可能选择本地部署。',
-      '我个人更倾向于认为，未来AI行业的结构会很像过去的计算机产业：少数最强、最昂贵的“上帝模型”会像超级计算机一样驻留在大型云端数据中心；与此同时，大量更小、更便宜、更容易部署的模型，会不断下沉到终端设备、嵌入式系统乃至各种物理对象中。最聪明的模型始终在塔尖，但数量最多、渗透最广的，反而会是那些小模型。',
-    ]),
-  }),
-  createDialogueSlice({
-    startLabel: '19:51',
-    endLabel: '21:01',
-    titleZh: 'AI芯片市场的周期与竞争态势',
-    summaryZh: '短缺终会走向过剩',
-    topicTitleZh: '芯片周期',
-    questionSpeaker: 'Marc',
-    question: '现在AI芯片仍处于供不应求的状态。你怎么看未来几年的供给变化和竞争格局？',
-    answerSpeaker: 'John',
-    answer: joinText([
-      '从芯片产业历史来看，一个反复上演的规律就是：短缺最终会导向过剩。',
-      '今天英伟达的成功，以及它获得的超高利润，已经成了整个芯片行业最明显的“集结号”。这会刺激所有竞争者加速跟进。AMD在追，超大规模云厂商也在自研，中国企业同样在推进自己的方案。',
-      '英伟达毫无疑问是一家非常优秀的公司，它今天的位置和利润都配得上它的实力。但市场规律是，只要一个新芯片品类里出现了足够大的利润池，就一定会有越来越多玩家冲进来。',
-      '按照这个逻辑推演，五年之后，AI芯片大概率会比现在便宜得多、也充足得多。对于我们投资的创业公司来说，这显然是重大利好，因为它会显著改善它们的单位经济模型。',
-    ]),
-  }),
-  createDialogueSlice({
-    startLabel: '21:02',
     endLabel: '24:14',
-    titleZh: '从GPU到专用AI芯片的演进',
-    summaryZh: '专用芯片与多元生态将起',
-    topicTitleZh: '专用芯片',
-    questionSpeaker: 'Marc',
-    question: '现在也有不少初创公司开始尝试新的芯片架构设计。这会改变AI今天主要依赖GPU的局面吗？',
-    answerSpeaker: 'John',
-    answer: joinText([
-      '其实，AI今天跑在GPU上，某种程度上带有很强的历史偶然性。GPU原本是图形处理器，是为了游戏、3D图形、CAD、图像处理这类任务而设计的。只是后来人们发现，它那种高度并行的架构碰巧特别适合另外两类高价值计算：一种是加密货币，另一种就是AI。',
-      '过去30年，英伟达在GPU市场的长期竞争中胜出，最终拥有了最强的图形处理架构。后来事实证明，这套架构也恰好非常适合AI。所以今天AI建立在GPU之上，既有英伟达的前瞻布局，也有一定的时代巧合。',
-      '但如果我们今天从零设计一套专门面向AI的芯片，很可能不会再照着传统GPU的完整形态去造，而是会开发更高效、更便宜、更适配AI负载的专用芯片。现在已经有不少初创公司在朝这个方向推进。起步当然很难，但它们未来可能通过独立做大，或者被大型公司并购，完成规模化。',
-      '同时，韩国、日本、中国都在构建各自的芯片生态。未来AI芯片不会只有单一答案，而是会出现更加多元的选择，这将是未来几年非常值得关注的一场大战。',
-    ]),
+    titleZh: '硬件重构',
+    summaryZh: '模型芯片齐变',
+    groups: [
+      {
+        topicTitleZh: 'GPU 优化与大小模型分工',
+        questionTimestamp: '15:52',
+        answerTimestamp: '16:12',
+        question: 'AWS 最近提到，他们使用的 GPU 寿命可以延长到 7 年以上。这是否意味着 GPU 的货架期正在拉长，而且他们能比前几个周期更好地进行优化？',
+        answer: joinText([
+          '没错，这是一个很重要的信号。它背后其实连着另一个更大的问题：大模型和小模型未来会如何分工。',
+          '现在的数据中心建设，主要还是围绕大模型训练和推理展开；但与此同时，小模型也在快速追赶。通常领先大模型出现 6 到 12 个月后，就会有能力接近的小模型出现，并且成本更低、部署更灵活。',
+          '我更倾向于认为，未来 AI 行业会像计算机行业一样分层发展：云端会保留少数最强的大模型，而大量小模型会渗透到本地设备、嵌入式系统和各种物理场景中。',
+          '大模型始终最聪明，但真正跑出规模的，很可能是更便宜、更容易部署的小模型。',
+        ]),
+      },
+      {
+        topicTitleZh: '短缺、扩产与竞争加剧',
+        questionTimestamp: '19:51',
+        answerTimestamp: '19:51',
+        question: '目前 AI 芯片市场处于短缺状态。你认为未来几年的供应和竞争格局会如何演变？',
+        answer: joinText([
+          '芯片行业的历史规律基本都是一样的：短缺最后往往会变成过剩。只要某个市场出现巨大利润空间，就一定会吸引更多竞争者进入。',
+          '英伟达现在确实处在非常强的位置，也完全配得上它当前的市场回报。但正因为它太成功了，AMD、云厂商自研芯片，以及中国厂商都会加速追赶。',
+          '未来几年的竞争只会越来越激烈。',
+          '所以我倾向于认为，五年后 AI 芯片会比今天便宜得多、供应也更充足。这对 AI 创业公司反而是好事，因为底层算力成本下降之后，它们的商业模式会更容易成立。',
+        ]),
+      },
+      {
+        topicTitleZh: '从 GPU 走向专用芯片',
+        questionTimestamp: '21:02',
+        answerTimestamp: '21:06',
+        question: '为什么 AI 现在主要跑在 GPU 上？未来会不会转向更专用的 AI 芯片架构？',
+        answer: joinText([
+          'AI 现在主要依赖 GPU，其实带有很强的历史偶然性。GPU 原本是为图形处理设计的，只是后来大家发现，它在并行计算上也非常适合加密和 AI 这类任务，所以才逐渐成为主流基础设施。',
+          '但如果今天从零开始为 AI 设计芯片，你未必会直接沿用传统 GPU 架构，而更可能会做面向 AI 专门优化的芯片。这类芯片在成本效率和任务适配上，理论上都可能更有优势。',
+          '因此，未来大概率不会只有 GPU 一条路线。我们会看到更多专用 AI 芯片出现，既包括创业公司的新架构，也包括大公司和各国本土芯片体系的持续投入。',
+          '最终市场会变得更多元，而不是长期由单一架构独占。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '24:15',
+    endLabel: '32:44',
+    titleZh: '中美竞速',
+    summaryZh: '开源改写赛局',
+    groups: [
+      {
+        topicTitleZh: '开源模型崛起与竞速升级',
+        questionTimestamp: '24:15',
+        answerTimestamp: '24:51',
+        question: '中国开源 AI 模型快速崛起，这对美国 AI 产业和中美竞争意味着什么？',
+        answer: joinText([
+          '这说明中国已经不只是跟随者，而是真正进入了 AI 主战场。DeepSeek 之类的模型之所以让华盛顿高度关注，不只是因为它们能力强，还因为它们把原本需要云端大模型才能实现的能力，压缩到了更小、更便宜、甚至可以本地运行的形态。',
+          '更重要的是，这一波进展还是以开源形式出现的，而这在中国并不常见。',
+          '这让美国政策圈开始更清楚地意识到，AI 已经不是美国单方面领先的赛道，而是一场真正的双边竞速。也正因为如此，华盛顿对“过度限制 AI”的态度比两年前明显收敛了。',
+          '当然，也有人会从产业竞争角度解读，认为中国是在用开源和低成本策略加速商品化、压缩西方公司的利润空间。这种判断未必全错，但更直接的事实是：中国确实已经在这场竞赛里，而且跑得很快。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '32:45',
+    endLabel: '41:50',
+    titleZh: '监管博弈',
+    summaryZh: '州法拖慢创新',
+    groups: [
+      {
+        topicTitleZh: '联邦克制与州级碎片化',
+        questionTimestamp: '32:45',
+        answerTimestamp: '33:16',
+        question: '现在美国如果变成 50 个州各搞一套 AI 法规，会不会严重拖慢美国在 AI 竞赛中的速度？目前联邦层面的情况怎么样？',
+        answer: joinText([
+          '两年前，我其实非常担心美国会出现破坏性很强的联邦 AI 立法。但从现在看，这种风险已经明显下降了。华盛顿两党现在都更清楚地认识到，美国是在和中国赛跑，因此联邦层面并没有太强的意愿去出台会明显削弱美国竞争力的政策。',
+          '真正更混乱的，反而是州层面。因为美国的联邦制允许各州自行立法，于是很多州都想在 AI 议题上抢位置。',
+          '一部分人确实是出于治理考虑，另一部分则明显带有政治投机色彩，想借 AI 这个热门议题提升自身声量。',
+          '所以问题不在于联邦马上会“一刀切”卡死 AI，而在于如果州层面形成碎片化监管，美国企业会在同一个国家内部面对一套非常分裂的合规环境，这会显著增加创新成本。',
+        ]),
+      },
+      {
+        topicTitleZh: '严苛法规对创新生态的冲击',
+        questionTimestamp: '39:14',
+        answerTimestamp: '39:14',
+        question: '如果监管继续收紧，尤其是针对开源模型，最大的风险会是什么？',
+        answer: joinText([
+          '最大的风险是把美国最有活力的一部分 AI 生态直接压掉。因为开源的价值，不只是“免费”，而是它让更多研究者、创业者和小团队能参与进来，把能力快速扩散出去。',
+          '如果监管思路过于严苛，最后最容易受伤的往往不是最有资源的大公司，而是那些本来有机会做出突破的小团队。',
+          '这样做的结果，很可能不是让 AI 更安全，而是让美国自己失去创新速度，同时把优势让给海外竞争者。',
+          '这个背景下，开源已经不只是技术路线之争，也是产业竞争力之争。',
+        ]),
+      },
+      {
+        topicTitleZh: '科技领袖为何必须下场',
+        questionTimestamp: '41:13',
+        answerTimestamp: '41:37',
+        question: '在这种政策与竞争同时加剧的环境里，科技行业领袖应该扮演什么角色？',
+        answer: joinText([
+          '科技行业不能把政策问题当成“别人来处理”的事。过去两年，很多围绕 AI 的讨论已经说明，政策方向会直接影响创新空间、资本投入和全球竞争格局。',
+          '所以科技领袖的职责，一方面是把真实的技术节奏和产业后果讲清楚，避免政策制定建立在误判之上；另一方面，也要在安全、竞争和创新自由之间争取更合理的平衡。',
+          '尤其当美国面对中国竞争时，科技行业更需要主动参与，而不是等规则落下后再被动适应。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '41:51',
+    endLabel: '47:00',
+    titleZh: '定价逻辑',
+    summaryZh: '按量也按价值',
+    groups: [
+      {
+        topicTitleZh: '从 token 计费走向价值计费',
+        questionTimestamp: '41:51',
+        answerTimestamp: '42:01',
+        question: 'AI 的定价模式最终会更接近按使用量收费，还是更接近按创造出来的价值收费？',
+        answer: joinText([
+          '从今天看，AI 最直观的商业模式仍然是按调用量收费，本质上就是“按 token 付费”。这种模式简单、直接，也最适合当前基础设施和模型服务的销售方式。',
+          '但长期来看，行业未必会停留在纯粹的按量计费。因为企业真正关心的不是 token 本身，而是 AI 带来了多少效率提升、收入增长和成本节约。',
+          '一旦 AI 更深地嵌入业务流程，定价逻辑就可能从“卖算力”逐步转向“卖结果”和“卖价值”。',
+          '所以更可能的终局不是二选一，而是两种模式并存：底层能力继续按需计费，上层应用逐渐走向价值定价。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '47:01',
+    endLabel: '58:36',
+    titleZh: '行业终局',
+    summaryZh: '格局仍未定',
+    groups: [
+      {
+        topicTitleZh: '开源与闭源的长期拉锯',
+        questionTimestamp: '47:01',
+        answerTimestamp: '47:17',
+        question: '开源和闭源最终谁会赢？这场万亿美元级别的竞争，现在是不是已经有答案了？',
+        answer: joinText([
+          '我认为这件事还远没有定论。闭源模型仍在快速进步，大型实验室的能力边界还在继续往前推；但与此同时，开源模型也在迅速追赶，而且部署更灵活、成本更低。',
+          '所以这更像是一场长期并存、不断拉锯的竞争，而不是“只有一边能活下来”。',
+          '尤其当中国也在用开源路线快速推进时，这个问题就不只是技术路线之争，也变成了产业与地缘竞争的一部分。',
+        ]),
+      },
+      {
+        topicTitleZh: '巨头、新现任者与初创公司',
+        questionTimestamp: '50:38',
+        answerTimestamp: '51:07',
+        question: '在这轮 AI 浪潮里，现有巨头、所谓“新现任者”和初创公司之间的格局，会怎么演变？',
+        answer: joinText([
+          '现在的格局不是简单的“大公司赢、小公司输”。一方面，OpenAI、Anthropic 这类公司已经像“新现任者”一样站稳了位置；但另一方面，新的基础模型公司和大量垂直应用公司还在持续冒出来。',
+          '更重要的是，很多优秀的 AI 应用公司并不是简单调用别人的模型做一层壳。随着产品变复杂，它们会同时使用多个模型，甚至自己训练和定制模型，再结合开源模型来优化成本和效果。',
+          '所以好的应用公司本身也会逐渐变成真正的深科技公司。',
+        ]),
+      },
+      {
+        topicTitleZh: '风投如何覆盖多条路径',
+        questionTimestamp: '57:03',
+        answerTimestamp: '57:03',
+        question: '在模型快速演进、格局不断变化的背景下，风投应该怎样配置自己的投资组合？',
+        answer: joinText([
+          '风投的核心逻辑，是抓住“底层技术架构发生根本变化”的时刻。因为一旦出现这种转折，创业公司就有机会在大公司反应过来之前，抢先占据新的品类和入口。',
+          '所以在 AI 这类大周期里，正确的做法通常不是只押注单一点位，而是同时覆盖基础模型、应用层和新兴方向。',
+          '谁能在技术浪潮切换时最快调整组合、从上一波成功过渡到下一波，谁就更可能成为真正优秀的风投机构。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '58:39',
+    endLabel: '01:08:41',
+    titleZh: '风投逻辑',
+    summaryZh: '押注架构转折',
+    groups: [
+      {
+        topicTitleZh: '分歧中的共识如何形成',
+        questionTimestamp: '58:39',
+        answerTimestamp: '58:55',
+        question: '像 A16Z 这样的大型机构，合伙人之间如果出现分歧，通常是怎么做决策的？',
+        answer: joinText([
+          '从长期合作的角度看，最重要的不是每次都没有分歧，而是能否在大的技术周期和方法论上形成共同判断。',
+          '像 AI 这样的大机会面前，真正起作用的是大家是否认可“这是一次底层架构变化”，以及机构是否愿意围绕这种判断进行组织和资源调整。',
+          '换句话说，好的决策机制不只是投票或争论本身，而是能不能在关键周期到来时迅速形成共识，并据此持续下注。',
+        ]),
+      },
+      {
+        topicTitleZh: '为什么 AI 必须押注',
+        questionTimestamp: '01:03:39',
+        answerTimestamp: '01:03:51',
+        question: '距离你们围绕 AI 重组、推出相关战略已经两年了。回头看，这个判断最正确的地方是什么？',
+        answer: joinText([
+          '我认为大方向是对的。因为风投最能创造超额回报的时候，通常就是技术底层发生重大架构变化的时候，而 AI 正是这种级别的变化。',
+          '一旦出现这种转变，就会释放出一个创业窗口期，让新公司有机会快速建立位置；如果没有这种架构变化，最后往往还是大公司把一切吃掉。',
+          '所以围绕 AI 做组织重心调整，本质上不是追热点，而是对一次技术大周期的提前响应。',
+        ]),
+      },
+    ],
+  }),
+  createDialogueSection({
+    startLabel: '01:08:44',
+    endLabel: '01:20:11',
+    titleZh: '社会镜像',
+    summaryZh: '焦虑中采纳',
+    groups: [
+      {
+        topicTitleZh: '社会焦虑与真实使用',
+        questionTimestamp: '01:08:44',
+        answerTimestamp: '01:09:27',
+        question: '为什么社会层面对 AI 充满焦虑，但现实中大家又在快速采用它？',
+        answer: joinText([
+          '因为人们“怎么说”和“怎么做”本来就常常不一样。你去问他们，他们会说 AI 很可怕、会毁掉工作、会带来巨大风险；但你去看真实行为，会发现他们已经在使用 AI。',
+          '所以在 AI 这个问题上，显性态度是焦虑，真实偏好却是采纳。',
+          '也正因如此，社会讨论常常显得悲观，但产品渗透和商业化却还在快速推进。',
+        ]),
+      },
+      {
+        topicTitleZh: '进展速度为何持续超预期',
+        questionTimestamp: '01:15:55',
+        answerTimestamp: '01:15:59',
+        question: '最近有没有什么事情，明显改变了你对世界或技术进程的判断？',
+        answer: joinText([
+          '最直接的感受就是，AI 的进展速度仍然在不断超出预期。无论是研究突破、产品迭代，还是创业公司的成熟速度，都让人持续感到惊讶。',
+          '特别是当你看到大模型刚取得进展，小模型很快就追上来，或者新的应用公司迅速把技术产品化，你会更强烈地意识到：这不是一个缓慢演进的行业，而是一场节奏非常快的系统性重构。',
+        ]),
+      },
+      {
+        topicTitleZh: '对人体冷冻的谨慎态度',
+        questionTimestamp: '01:16:24',
+        answerTimestamp: '01:16:32',
+        question: '你计划在未来选择人体冷冻保存吗？',
+        answer: joinText([
+          '以现阶段的人体冷冻技术来看，我不会这么做。它目前的实际记录并不好，而且相关案例多少有些令人不安。',
+          '我对未来技术保持开放态度，但这更像是一条仍然非常早期的路线，而不是今天已经值得下注的现实方案。',
+        ]),
+      },
+      {
+        topicTitleZh: '影响力扩大后如何校准判断',
+        questionTimestamp: '01:16:47',
+        answerTimestamp: '01:16:53',
+        question: '当一个人拥有越来越大的影响力时，怎样才能保持判断清醒？',
+        answer: joinText([
+          '一个重要方法，就是始终把自己放回更大的技术周期和现实反馈里，而不是只相信外界吹捧。',
+          '技术浪潮里最容易出现的，就是过度承诺、情绪膨胀和把阶段性成功误判成终局。',
+          '真正有用的清醒感，来自持续观察真实采用、真实收入、真实产品能力，以及不断提醒自己：很多问题仍然没有最终答案。',
+        ]),
+      },
+      {
+        topicTitleZh: '不想亲自去，但看好它成真',
+        questionTimestamp: '01:20:06',
+        answerTimestamp: '01:20:11',
+        question: '如果未来有机会，你会去火星吗？',
+        answer: joinText([
+          '大概率不会。我连离开加州都不太积极，更别说真的去火星了。',
+          '不过我确实认为 Elon 很可能会把这件事做成。也许在十年左右的时间里，往返火星会开始变成一个现实问题，只是我自己大概更愿意通过“远程方式”体验，而不是亲自上去。',
+        ]),
+      },
+    ],
   }),
 ];
 
 const quickSections: TranscriptSection[] = fullDialogueSlices.map((slice) => slice.section);
 
-const curatedTranslationContent = buildStoredTranslationContent(
+export const andreessenCuratedTranslationContent = buildStoredTranslationContent(
   sourceBundle,
   {
     quick: buildStoredQuickRendering(sourceBundle, quickSections, {
-      translatedTitleZh: '马克·安德森的2026年展望：AI时间线、中美竞争与AI成本',
-      summaryZh: '尽管公众在民调中对AI感到恐慌，但其实际使用行为却显示出人们正积极拥抱并依赖这项技术。',
-      summary: 'Despite public fear in polls, actual behavior shows people are already embracing and relying on AI.',
-      speakers: ['Jen', 'Marc', 'John'],
+      translatedTitleZh: CURATED_TITLE_ZH,
+      summaryZh: CURATED_SUMMARY_ZH,
+      summary: CURATED_SUMMARY_EN,
+      speakers: CURATED_SPEAKERS,
       model: CURATED_MODEL,
       geminiTranslationComplete: true,
       translationNeedsRefresh: false,
     }),
     full: buildStoredFullRendering(sourceBundle, fullDialogueSlices, {
-      translatedTitleZh: '马克·安德森的2026年展望：AI时间线、中美竞争与AI成本',
-      summaryZh: '尽管公众在民调中对AI感到恐慌，但其实际使用行为却显示出人们正积极拥抱并依赖这项技术。',
-      summary: 'Despite public fear in polls, actual behavior shows people are already embracing and relying on AI.',
-      speakers: ['Jen', 'Marc', 'John'],
+      translatedTitleZh: CURATED_TITLE_ZH,
+      summaryZh: CURATED_SUMMARY_ZH,
+      summary: CURATED_SUMMARY_EN,
+      speakers: CURATED_SPEAKERS,
       model: CURATED_MODEL,
       geminiTranslationComplete: true,
       translationNeedsRefresh: false,
@@ -284,6 +490,16 @@ const curatedTranslationContent = buildStoredTranslationContent(
   },
   CURATED_UPDATED_AT,
 );
+
+export const andreessenCuratedHotItem: CuratedHotVideoItem = {
+  videoId: CURATED_VIDEO_ID,
+  title: CURATED_TITLE_ZH,
+  author: sourceBundle.sourceAuthor,
+  thumbnailUrl: sourceBundle.thumbnailUrl,
+  youtubeUrl: `https://www.youtube.com/watch?v=${CURATED_VIDEO_ID}`,
+  viewCount: 0,
+  updatedAt: CURATED_UPDATED_AT,
+};
 
 const curatedEntries: Array<{
   item: CuratedHotVideoItem;
@@ -298,16 +514,8 @@ const curatedEntries: Array<{
     content: jensenCuratedTranslationContent,
   },
   {
-    item: {
-      videoId: CURATED_VIDEO_ID,
-      title: '马克·安德森的2026年展望：AI时间线、中美竞争与AI成本',
-      author: sourceBundle.sourceAuthor,
-      thumbnailUrl: sourceBundle.thumbnailUrl,
-      youtubeUrl: `https://www.youtube.com/watch?v=${CURATED_VIDEO_ID}`,
-      viewCount: 0,
-      updatedAt: CURATED_UPDATED_AT,
-    },
-    content: curatedTranslationContent,
+    item: andreessenCuratedHotItem,
+    content: andreessenCuratedTranslationContent,
   },
 ];
 

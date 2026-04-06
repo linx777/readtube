@@ -1170,7 +1170,8 @@ function renderDialogueSliceMarkdown(
   showSpeakerNames = true,
 ): string {
   const mergedTurns = mergeConsecutiveDialogueTurns(turns);
-  const mergedGroups = groups.length
+  const hasGroupedTopics = groups.length > 0;
+  const mergedGroups = hasGroupedTopics
     ? groups
       .map((group) => {
         const normalizedAnswers = normalizeAnswerTurnsForRendering(group.question, group.answers ?? []);
@@ -1186,7 +1187,8 @@ function renderDialogueSliceMarkdown(
       })
       .filter((group) => group.topicTitleZh && group.turns.length)
     : [];
-  const displayTurns = mergedGroups.length ? mergedGroups.flatMap((group) => group.turns) : mergedTurns;
+  const renderableGroups = mergedGroups.filter((group) => !isQuestionOnlyDialogueGroup(group));
+  const displayTurns = renderableGroups.length ? renderableGroups.flatMap((group) => group.turns) : mergedTurns;
   const shouldShowSpeakerNames = showSpeakerNames || displayTurns.some((turn) => !turn.speaker.trim());
   const speakerDisplayNames = shouldShowSpeakerNames
     ? buildSpeakerDisplayNames(displayTurns)
@@ -1194,10 +1196,34 @@ function renderDialogueSliceMarkdown(
 
   return [
     renderSectionThemeHtml(section),
-    (mergedGroups.length
-      ? mergedGroups.map((group) => renderDialogueSubtopicHtml(group, speakerDisplayNames, shouldShowSpeakerNames)).join('')
+    (hasGroupedTopics
+      ? renderableGroups.map((group) => renderDialogueSubtopicHtml(group, speakerDisplayNames, shouldShowSpeakerNames)).join('')
       : renderDialogueTurnsHtml(mergedTurns, speakerDisplayNames, shouldShowSpeakerNames)),
   ].join('');
+}
+
+function isQuestionOnlyDialogueGroup(group: {
+  turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
+}): boolean {
+  return group.turns.length === 1 && looksQuestionLikeText(group.turns[0]?.textZh ?? '');
+}
+
+function buildStructuredDialogueTurns(
+  question: { timestamp: string; speaker: string; textZh: string } | undefined,
+  answers: Array<{ timestamp: string; speaker: string; textZh: string }>,
+): Array<{ timestamp: string; speaker: string; textZh: string }> | null {
+  if (!question || !question.timestamp || !question.textZh || !answers.length) {
+    return null;
+  }
+
+  return [
+    {
+      timestamp: question.timestamp,
+      speaker: question.speaker.trim(),
+      textZh: question.textZh.trim(),
+    },
+    ...answers,
+  ];
 }
 
 function reconcileDialogueGroup(
@@ -1213,8 +1239,9 @@ function reconcileDialogueGroup(
   question?: { timestamp: string; speaker: string; textZh: string };
   answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
   turns: Array<{ timestamp: string; speaker: string; textZh: string }>;
-} {
+  } {
   const normalizedAnswers = mergeConsecutiveDialogueTurns(group.answers ?? []);
+  const structuredTurns = buildStructuredDialogueTurns(group.question, normalizedAnswers);
   const normalizedGroup = {
     topicTitleZh: group.topicTitleZh.trim(),
     turns,
@@ -1226,11 +1253,9 @@ function reconcileDialogueGroup(
   };
 
   if (
-    group.question
-    && normalizedAnswers.length
-    && turns.length === 1 + normalizedAnswers.length
-    && isSameDialogueTurn(turns[0], group.question)
-    && normalizedAnswers.every((answer, index) => isSameDialogueTurn(turns[index + 1], answer))
+    structuredTurns
+    && turns.length === structuredTurns.length
+    && structuredTurns.every((turn, index) => isSameDialogueTurn(turns[index], turn))
   ) {
     normalizedGroup.question = group.question;
     normalizedGroup.answers = normalizedAnswers;
@@ -1256,6 +1281,20 @@ function canRenderDialogueQaGroup(group: {
     && isSameDialogueTurn(group.turns[0], group.question!)
     && answers.every((answer, index) => isSameDialogueTurn(group.turns[index + 1], answer))
   );
+}
+
+function shouldRenderQuestionSpeakerAsHost(group: {
+  question?: { timestamp: string; speaker: string; textZh: string };
+  answers?: Array<{ timestamp: string; speaker: string; textZh: string }>;
+}): boolean {
+  const questionSpeakerKey = group.question?.speaker.trim().toLowerCase() || '';
+  if (!questionSpeakerKey) {
+    return false;
+  }
+
+  return (group.answers ?? []).some((answer) => (
+    answer.speaker.trim().toLowerCase() === questionSpeakerKey
+  ));
 }
 
 function renderDialogueQaTurnHtml(
@@ -1292,9 +1331,19 @@ function renderDialogueSubtopicHtml(
   speakerDisplayNames: Map<string, string>,
   showSpeakerNames: boolean,
 ): string {
-  const bodyHtml = canRenderDialogueQaGroup(group)
+  const renderAsQaGroup = canRenderDialogueQaGroup(group);
+  const bodyHtml = renderAsQaGroup
     ? [
-        renderDialogueQaTurnHtml(group.question, speakerDisplayNames, showSpeakerNames),
+        renderDialogueQaTurnHtml(
+          shouldRenderQuestionSpeakerAsHost(group)
+            ? {
+                ...group.question,
+                speaker: 'Host',
+              }
+            : group.question,
+          speakerDisplayNames,
+          showSpeakerNames,
+        ),
         ...group.answers.map((answer) => renderDialogueQaTurnHtml(answer, speakerDisplayNames, showSpeakerNames)),
       ].join('')
     : renderDialogueTurnsHtml(group.turns, speakerDisplayNames, showSpeakerNames);
@@ -1505,7 +1554,16 @@ function normalizeDialogueGroups(
   groups: TranscriptDialogueSliceResult['groups'],
 ): TranscriptDialogueSliceResult['groups'] {
   const normalized = groups
-    .map((group) => reconcileDialogueGroup(group, mergeConsecutiveDialogueTurns(group.turns)))
+    .map((group) => {
+      const structuredTurns = buildStructuredDialogueTurns(
+        group.question,
+        mergeConsecutiveDialogueTurns(group.answers ?? []),
+      );
+      return reconcileDialogueGroup(
+        group,
+        structuredTurns ?? mergeConsecutiveDialogueTurns(group.turns),
+      );
+    })
     .filter((group) => group.topicTitleZh && group.turns.length);
 
   let index = 1;

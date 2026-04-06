@@ -171,10 +171,10 @@ describe('handleGenerateRoute', () => {
     expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
     expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
     expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
-    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
-    expect(body).toContain('AI发展展望');
-    expect(body).toContain('一个主要的质疑是，虽然收入巨大，但支出也在同步增长，人们在讨论中忽略了什么？');
-    expect(body).toContain('AI行业主要有消费者和企业/基础设施两种商业模式。');
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI价格');
+    expect(body).toContain('革命定位');
+    expect(body).toContain('AI 行业一边收入快速增长，一边支出也很高。应该怎样理解它的商业模式、普及速度和长期成本结构？');
+    expect(body).toContain('AI 的商业模式大致分成两类：消费者业务，以及企业和基础设施业务。');
     expect(body).toContain('"stage":"complete"');
     expect(body).toContain('event: done');
   });
@@ -202,7 +202,7 @@ describe('handleGenerateRoute', () => {
     expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
     expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
     expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
-    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI价格');
     expect(body).toContain('event: done');
   });
 
@@ -230,7 +230,7 @@ describe('handleGenerateRoute', () => {
     expect(fetchTranscriptBundleMock).not.toHaveBeenCalled();
     expect(generateTranscriptSectionsMock).not.toHaveBeenCalled();
     expect(translateTranscriptSectionToZhMock).not.toHaveBeenCalled();
-    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI成本');
+    expect(body).toContain('马克·安德森的2026年展望：AI时间线、中美竞争与AI价格');
     expect(body).toContain('event: done');
   });
 
@@ -1228,6 +1228,176 @@ describe('handleGenerateRoute', () => {
     expect(body).toContain('qa-speaker\\">host<');
     expect(body).toContain('qa-speaker\\">Emil<');
     expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">host</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:00</span></div>');
+  });
+
+  it('keeps question and answer separated when Gemini labels both with the same speaker', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Alex'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:30',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '身份验证',
+          topicSummaryZh: '验证人类唯一性是防范机器人的关键。',
+          subtitleZh: '身份验证',
+          summaryZh: '验证人类唯一性是防范机器人的关键。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:30',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '身份验证',
+        topicSummaryZh: '验证人类唯一性是防范机器人的关键。',
+        subtitleZh: '身份验证',
+        summaryZh: '验证人类唯一性是防范机器人的关键。',
+        transcript: '[00:00] Question line\n[00:15] Answer line',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Alex', textZh: '我们该如何证明某人是真实的人类？' },
+        { timestamp: '00:15', speaker: 'Alex', textZh: '核心在于建立长期唯一身份与持续验证。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '何为人类证明',
+          question: { timestamp: '00:00', speaker: 'Alex', textZh: '我们该如何证明某人是真实的人类？' },
+          answers: [{ timestamp: '00:15', speaker: 'Alex', textZh: '核心在于建立长期唯一身份与持续验证。' }],
+          turns: [
+            { timestamp: '00:00', speaker: 'Alex', textZh: '我们该如何证明某人是真实的人类？' },
+            { timestamp: '00:15', speaker: 'Alex', textZh: '核心在于建立长期唯一身份与持续验证。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).toContain('qa-speaker\\">Host<');
+    expect(body).toContain('qa-speaker\\">Alex<');
+    expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">Host</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:00</span></div>');
+    expect(body).toContain('<div class=\\"qa-meta\\"><div class=\\"qa-speaker\\">Alex</div><div class=\\"qa-time\\"><span class=\\"timestamp rail compact\\">00:15</span></div>');
+  });
+
+  it('does not render a topic when only a question turn remains', async () => {
+    const bundle = createBundle();
+
+    fetchTranscriptBundleMock.mockResolvedValue(bundle);
+    generateTranscriptSectionsMock.mockResolvedValue({
+      titleTranslationZh: '测试标题',
+      summaryZh: '测试高亮',
+      summary: 'Highlight sentence.',
+      speakers: ['Host', 'Alex', 'Ben'],
+      sections: [
+        {
+          startLabel: '00:00',
+          endLabel: '00:45',
+          subtitle: 'Opening',
+          summary: 'Covers the opening lines.',
+          topicTitleZh: '身份验证',
+          topicSummaryZh: '验证人类唯一性是防范机器人的关键。',
+          subtitleZh: '身份验证',
+          summaryZh: '验证人类唯一性是防范机器人的关键。',
+          transcript: '',
+        },
+      ],
+      model: 'test-sections-model',
+    });
+    translateTranscriptSectionToZhMock.mockResolvedValue({
+      section: {
+        startLabel: '00:00',
+        endLabel: '00:45',
+        subtitle: 'Opening',
+        summary: 'Covers the opening lines.',
+        topicTitleZh: '身份验证',
+        topicSummaryZh: '验证人类唯一性是防范机器人的关键。',
+        subtitleZh: '身份验证',
+        summaryZh: '验证人类唯一性是防范机器人的关键。',
+        transcript: '[00:00] Question only\n[00:20] Valid question\n[00:35] Valid answer',
+      },
+      turns: [
+        { timestamp: '00:00', speaker: 'Host', textZh: '什么是人类证明？' },
+        { timestamp: '00:20', speaker: 'Host', textZh: '为什么它很重要？' },
+        { timestamp: '00:35', speaker: 'Alex', textZh: '因为它能帮助平台区分真人与机器人。' },
+      ],
+      groups: [
+        {
+          topicTitleZh: '孤立问题',
+          turns: [
+            { timestamp: '00:00', speaker: 'Host', textZh: '什么是人类证明？' },
+          ],
+        },
+        {
+          topicTitleZh: '有效主题',
+          question: { timestamp: '00:20', speaker: 'Host', textZh: '为什么它很重要？' },
+          answers: [
+            { timestamp: '00:35', speaker: 'Alex', textZh: '因为它能帮助平台区分真人与机器人。' },
+          ],
+          turns: [
+            { timestamp: '00:20', speaker: 'Host', textZh: '为什么它很重要？' },
+            { timestamp: '00:35', speaker: 'Alex', textZh: '因为它能帮助平台区分真人与机器人。' },
+          ],
+        },
+      ],
+      model: 'test-dialogue-model',
+    });
+
+    const request = new Request('https://example.com/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        youtubeUrl: TEST_VIDEO_URL,
+        readingMode: 'full',
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const env: Env = {
+      GEMINI_API_KEY: 'test-gemini-key',
+    };
+    const { ctx, waitForAll } = createExecutionContext();
+
+    const response = await handleGenerateRoute(request, env, ctx);
+    const bodyPromise = response.text();
+    await waitForAll();
+
+    const body = await bodyPromise;
+    expect(body).not.toContain('孤立问题');
+    expect(body).not.toContain('什么是人类证明？');
+    expect(body).toContain('有效主题');
+    expect(body).toContain('为什么它很重要？');
+    expect(body).toContain('因为它能帮助平台区分真人与机器人。');
   });
 
   it('renders multiple answer speakers for one question in order', async () => {

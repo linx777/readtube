@@ -2162,6 +2162,61 @@ function renderStyles(): string {
       letter-spacing: -0.01em;
     }
 
+    .article .section-theme-toggle,
+    .article .dialogue-subtopic-toggle {
+      width: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 14px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      letter-spacing: inherit;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .article .section-theme-toggle-copy,
+    .article .dialogue-subtopic-toggle-copy {
+      display: block;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .article .article-collapse-icon {
+      flex: 0 0 auto;
+      order: -1;
+      width: 10px;
+      height: 10px;
+      margin-top: 0.52em;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg);
+      transform-origin: 50% 50%;
+      opacity: 0.72;
+      transition:
+        transform 180ms ease,
+        opacity 180ms ease;
+    }
+
+    .article [data-collapse-toggle][aria-expanded="false"] .article-collapse-icon {
+      transform: rotate(-45deg);
+    }
+
+    .article [data-collapse-toggle]:hover .article-collapse-icon,
+    .article [data-collapse-toggle]:focus-visible .article-collapse-icon {
+      opacity: 1;
+    }
+
+    .article .dialogue-section-content,
+    .article .dialogue-subtopic-content {
+      min-width: 0;
+    }
+
     .article .section-heading {
       display: grid;
       grid-template-columns: max-content minmax(0, 1fr);
@@ -2908,7 +2963,17 @@ function renderStyles(): string {
         border-radius: 19.2px;
       }
 
+      .input-shell::before {
+        left: 18px;
+        width: 16px;
+        height: 16px;
+        border-width: 1.25px;
+        box-shadow: 5.5px 5.5px 0 -4px #9ca3af;
+      }
+
       input[type="url"] {
+        height: 42.3px;
+        padding: 0 20px 0 46px;
         font-size: 11.52px;
       }
 
@@ -4829,6 +4894,166 @@ function renderScript(): string {
         }
         qa.insertBefore(meta, body);
       });
+
+      syncArticleCollapsibles(root);
+    }
+
+    function normalizeCollapseKey(value) {
+      return String(value || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    function createCollapseContentId(prefix, sourceId, index) {
+      const normalizedSourceId = normalizeCollapseKey(sourceId);
+      return prefix + '-' + (normalizedSourceId || String(index + 1));
+    }
+
+    function ensureCollapseToggle(title, content, kind, contentId) {
+      if (!title || !content) {
+        return;
+      }
+
+      if (!content.id) {
+        content.id = contentId;
+      }
+
+      let toggle = title.querySelector(':scope > [data-collapse-toggle]');
+      if (!toggle) {
+        toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = kind === 'section' ? 'section-theme-toggle' : 'dialogue-subtopic-toggle';
+        toggle.dataset.collapseToggle = kind;
+
+        const copy = document.createElement('span');
+        copy.className = kind === 'section' ? 'section-theme-toggle-copy' : 'dialogue-subtopic-toggle-copy';
+        while (title.firstChild) {
+          copy.appendChild(title.firstChild);
+        }
+
+        const icon = document.createElement('span');
+        icon.className = 'article-collapse-icon';
+        icon.setAttribute('aria-hidden', 'true');
+
+        toggle.appendChild(copy);
+        toggle.appendChild(icon);
+        title.appendChild(toggle);
+      }
+
+      const expanded = !content.hidden;
+      toggle.setAttribute('aria-controls', content.id);
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    function syncArticleCollapsibles(root) {
+      if (!root) {
+        return;
+      }
+
+      root.querySelectorAll('.dialogue-section-block').forEach((block, index) => {
+        if (block.hidden) {
+          return;
+        }
+
+        const title = block.querySelector(':scope > .section-theme-block > .section-theme-title');
+        if (!title) {
+          return;
+        }
+
+        let content = block.querySelector(':scope > .dialogue-section-content');
+        if (!content) {
+          const siblings = Array.from(block.children).filter((child) => !child.classList.contains('section-theme-block'));
+          if (!siblings.length) {
+            return;
+          }
+
+          content = document.createElement('div');
+          content.className = 'dialogue-section-content';
+          siblings.forEach((child) => content.appendChild(child));
+          block.appendChild(content);
+        }
+
+        if (!content.childNodes.length) {
+          return;
+        }
+
+        ensureCollapseToggle(
+          title,
+          content,
+          'section',
+          createCollapseContentId('section-content', block.getAttribute('data-dialogue-section-id'), index),
+        );
+        block.dataset.collapsed = content.hidden ? 'true' : 'false';
+      });
+
+      root.querySelectorAll('.dialogue-subtopic-block').forEach((block, index) => {
+        const title = block.querySelector(':scope > .dialogue-subtopic-title');
+        if (!title) {
+          return;
+        }
+
+        let content = block.querySelector(':scope > .dialogue-subtopic-content');
+        if (!content) {
+          const siblings = Array.from(block.children).filter((child) => child !== title);
+          if (!siblings.length) {
+            return;
+          }
+
+          content = document.createElement('div');
+          content.className = 'dialogue-subtopic-content';
+          siblings.forEach((child) => content.appendChild(child));
+          block.appendChild(content);
+        }
+
+        if (!content.childNodes.length) {
+          return;
+        }
+
+        const sectionBlock = block.closest('.dialogue-section-block');
+        const sourceId = (sectionBlock ? sectionBlock.getAttribute('data-dialogue-section-id') : '')
+          || 'subtopic-' + String(index + 1);
+
+        ensureCollapseToggle(
+          title,
+          content,
+          'subtopic',
+          createCollapseContentId('subtopic-content', sourceId + '-' + String(index + 1), index),
+        );
+        block.dataset.collapsed = content.hidden ? 'true' : 'false';
+      });
+    }
+
+    function setArticleCollapseExpanded(toggle, expanded) {
+      if (!toggle) {
+        return;
+      }
+
+      const contentId = toggle.getAttribute('aria-controls') || '';
+      if (!contentId) {
+        return;
+      }
+
+      const content = document.getElementById(contentId);
+      if (!content) {
+        return;
+      }
+
+      content.hidden = !expanded;
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+
+      const collapseType = toggle.dataset.collapseToggle;
+      if (collapseType === 'section') {
+        const sectionBlock = toggle.closest('.dialogue-section-block');
+        if (sectionBlock) {
+          sectionBlock.dataset.collapsed = expanded ? 'false' : 'true';
+        }
+      } else if (collapseType === 'subtopic') {
+        const subtopicBlock = toggle.closest('.dialogue-subtopic-block');
+        if (subtopicBlock) {
+          subtopicBlock.dataset.collapsed = expanded ? 'false' : 'true';
+        }
+      }
     }
 
     function syncArticleHero() {
@@ -5467,6 +5692,23 @@ function renderScript(): string {
       }
     });
 
+    if (article) {
+      article.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) {
+          return;
+        }
+
+        const toggle = event.target.closest('[data-collapse-toggle]');
+        if (!toggle || !article.contains(toggle)) {
+          return;
+        }
+
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        setArticleCollapseExpanded(toggle, !expanded);
+        updateReadingProgress();
+      });
+    }
+
     backButton.addEventListener('click', returnToMainPage);
 
     if (brandButton) {
@@ -5510,7 +5752,7 @@ export function renderAppPage(options: { canonicalUrl: string; iconUrl: string }
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>${SITE_TITLE}</title>
     <meta name="description" content="${SITE_DESCRIPTION}" />
     <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
